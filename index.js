@@ -2,14 +2,38 @@
 
 var SerialPort = require("serialport").SerialPort
 var machina = require('machina');
+var spawn = require('child_process').spawn;
+var kill = require('tree-kill');
+var Promise = require('es6-promise').Promise;
+
+var CONNECTION_TIMOUT = 20 * 1000;
+var SSH_TIMEOUT = 3 * 1000;
+var QUERY_TIMOUT = 10*1000;
 
 var parseATResponse = require('./parseATResponse.js');
 
 var dongle = new machina.Fsm({
 
     serialPort: undefined,
+    wvdialPid: null,
+    sshPid: null,
 
     initialState: "uninitialized",
+
+
+
+    cleanProcess: function(pid){
+
+        var self = this;
+        pid = pid || self.wvdialPid;
+        console.log("Cleaning pid ", pid);
+        if (pid > 0){
+            kill(pid, 'SIGKILL');
+        } else {
+            console.log("could not kill signal whose pid is not an integer");
+        };
+    },
+
 
     states: {
         "uninitialized": {
@@ -46,7 +70,7 @@ var dongle = new machina.Fsm({
         "initialized": {
         	_onEnter : function () {
                 this.handle("sendAT", "ATE1"); // echo mode makes easier to parse responses
-				this.handle("readUnreadSMS");
+                this.handle("sendAT", "AT+CMEE=1 "); // more error
 			},
             "sendSMS": function(message, phone_no) {
 
@@ -68,23 +92,81 @@ var dongle = new machina.Fsm({
             "sendAT": function(cmd) {
                 this.serialPort.write(cmd + "\r");
             },
-            "connect": function() {
-                this.handle("sendAT", "AT+CGATT=1");
-                this.handle("sendAT", "ATH");
-                this.handle("sendAT", 'AT+CGDCONT=1,"IP","free"');
-                this.handle("sendAT", "AT+CGACT=1,1");
-                this.handle("sendAT", 'AT+CGDATA="PPP",1');
-                this.handle("sendAT", "ATD*99***1#");
-                this.transition("connected");                
-            }
+            "connect3G": function() {
+
+                var self = this;
+
+                new Promise(function(resolve, reject){
+                    var myProcess = spawn("wvdial", ["3G"]);
+                    console.log("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
+
+                    myProcess.stderr.on("data", function(chunkBuffer){
+                        var message = chunkBuffer.toString();
+                        console.log("=> " + message);
+                        if (message.indexOf("Device or resource busy") !== -1){
+                            setTimeout(function(){reject({pid: myProcess.pid, msg:"Ressource busy."})}, CONNECTION_TIMOUT);
+                        } else if (message.indexOf("The PPP daemon has died") !== -1){
+                            setTimeout(function(){reject({pid: myProcess.pid, msg:"PPP died."})}, CONNECTION_TIMOUT);
+                        } else if (message.indexOf("local  IP address") !== -1){
+                            resolve(myProcess.pid);
+                        } else {
+                            setTimeout(function(){reject({pid: myProcess.pid, msg:"Request time out."})}, CONNECTION_TIMOUT);
+                        }
+                    });
+                })
+                .then(function(pid){
+                    self.wvdialPid = pid;
+                    self.transition( "3G_connected" );
+                })
+                .catch(function(err){
+                    console.log(err.msg);
+                    console.log("Could not connect. Cleanning...");
+                    self.cleanProcess(err.pid);
+                });
+
+                
+            },
         },
 
-        "connected": {
+        "3G_connected": {
             "disconnect": function() {
-                this.handle("sendAT", "AT+CGACT=0,1");
-                this.handle("sendAT", "AT+CGATT=0");
-                this.transition("initialized"); 
-            }
+                var self = this;
+                self.cleanProcess(self.wvdialPid);
+                self.transition( "initialized" );
+            },
+
+            "makeTunnel": function(port) {
+
+                var self = this;
+
+                new Promise(function(resolve, reject){
+                    var myProcess = spawn("ssh", ["-N", "-R", port + ":localhost:22", "ants"]);
+                    console.log("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
+
+                    myProcess.stderr.on("data", function(chunkBuffer){
+                        var message = chunkBuffer.toString();
+                        console.log("=> " + message);
+                        if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
+                            reject({pid: myProcess.pid, msg:"Port already in use."});
+                        }
+                    });
+                    // if no error after SSH_TIMEOUT then validate the connexion
+                    setTimeout(function(){resolve(myProcess.pid)}, SSH_TIMEOUT);
+
+                })
+                .then(function(pid){
+                    self.sshPid = pid;
+                    self.transition( "3G_tunnel" );
+                    resolve1("SUCCESS");
+                })
+                .catch(function(err){
+                    console.log(err.msg);
+                    console.log("Could not make the tunnel. Cleanning...");
+                    self.cleanProcess(err.pid)
+                });
+
+
+            },
 
         }
     }

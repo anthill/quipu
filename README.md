@@ -1,3 +1,15 @@
+# Graham
+
+This modules provides modem functionnalities in node.js.
+
+## Sending and receiving sms
+
+```
+var dongle = require("graham");
+
+dongle.handle("initialize", "/dev/ttyUSB0");
+dongle.handle("sendSMS", "Here is my text message", "33671******");
+```
 
 
 
