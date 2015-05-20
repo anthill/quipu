@@ -1,4 +1,4 @@
-# Graham
+# Quipu
 
 This modules provides modem functionnalities in node.js.
 
