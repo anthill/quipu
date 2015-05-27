@@ -59,8 +59,20 @@ var dongle = new machina.Fsm({
 
                 self.serialPort.on("open", function () {
                 	self.serialPort.on('data', function(data) {
-				        var response = parseATResponse(data);
-				        self.emit("ATresponse", response)
+				        // var response = parseATResponse(data);
+				        // self.emit("ATresponse", response)
+                        var message = data.toString().trim();
+                        // console.log(data.toString());
+                        if(message.slice(0,5) === "+CMTI"){
+                            self.handle("sendAT", 'AT+CPMS="ME"');
+                            self.handle("sendAT", 'AT+CMGR=0');
+                        }
+                        if(message.slice(0, 5) === "+CMGR"){
+                            var parts = message.split(/\r+\n/);
+                            var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
+                            var body = parts[1]
+                            self.emit("smsReceived", {body: body, from: from});
+                        }
 				    });
                     self.transition("initialized");
                 });
@@ -71,6 +83,7 @@ var dongle = new machina.Fsm({
         	_onEnter : function () {
                 this.handle("sendAT", "ATE1"); // echo mode makes easier to parse responses
                 this.handle("sendAT", "AT+CMEE=1 "); // more error
+                this.handle("sendAT", "AT+CNMI=2,1,0,2,0"); // to get notification when messages are received
 			},
             "sendSMS": function(message, phone_no) {
 
