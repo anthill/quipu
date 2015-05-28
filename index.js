@@ -10,12 +10,10 @@ var CONNECTION_TIMOUT = 20 * 1000;
 var SSH_TIMEOUT = 3 * 1000;
 var QUERY_TIMOUT = 10*1000;
 
-var parseATResponse = require('./parseATResponse.js');
-
 var dongle = new machina.Fsm({
 
     serialPort: undefined,
-    wvdialPid: null,
+    pppPid: null,
     sshPid: null,
 
     initialState: "uninitialized",
@@ -25,7 +23,7 @@ var dongle = new machina.Fsm({
     cleanProcess: function(pid){
 
         var self = this;
-        pid = pid || self.wvdialPid;
+        pid = pid || self.pppPid;
         console.log("Cleaning pid ", pid);
         if (pid > 0){
             kill(pid, 'SIGKILL');
@@ -62,7 +60,7 @@ var dongle = new machina.Fsm({
 				        // var response = parseATResponse(data);
 				        // self.emit("ATresponse", response)
                         var message = data.toString().trim();
-                        // console.log(data.toString());
+                        console.log(data.toString());
                         if(message.slice(0,5) === "+CMTI"){
                             self.handle("sendAT", 'AT+CPMS="ME"');
                             self.handle("sendAT", 'AT+CMGR=0');
@@ -110,25 +108,23 @@ var dongle = new machina.Fsm({
                 var self = this;
 
                 new Promise(function(resolve, reject){
-                    var myProcess = spawn("wvdial", ["3G"]);
-                    console.log("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
 
-                    myProcess.stderr.on("data", function(chunkBuffer){
-                        var message = chunkBuffer.toString();
-                        console.log("=> " + message);
-                        if (message.indexOf("Device or resource busy") !== -1){
-                            setTimeout(function(){reject({pid: myProcess.pid, msg:"Ressource busy."})}, CONNECTION_TIMOUT);
-                        } else if (message.indexOf("The PPP daemon has died") !== -1){
-                            setTimeout(function(){reject({pid: myProcess.pid, msg:"PPP died."})}, CONNECTION_TIMOUT);
-                        } else if (message.indexOf("local  IP address") !== -1){
-                            resolve(myProcess.pid);
-                        } else {
-                            setTimeout(function(){reject({pid: myProcess.pid, msg:"Request time out."})}, CONNECTION_TIMOUT);
-                        }
-                    });
+
+                    self.handle("sendAT", 'AT+CGDCONT=1,"IP","free"');
+                    self.handle("sendAT", "AT+CGACT=1,1");
+                    self.handle("sendAT", 'AT+CGDATA="PPP",1');
+                    self.handle("sendAT", "ATD*99***1#");
+
+                    
+                    setTimeout(function(){
+                        console.log("Starting ppp");
+                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", "/dev/tty.HUAWEIMobile-Pcui", "38400", "&"]);
+                        resolve(myProcess.pid);
+                    }, 5000);
+                        
                 })
                 .then(function(pid){
-                    self.wvdialPid = pid;
+                    self.pppPid = pid;
                     self.transition( "3G_connected" );
                 })
                 .catch(function(err){
@@ -142,10 +138,16 @@ var dongle = new machina.Fsm({
         },
 
         "3G_connected": {
-            "disconnect": function() {
+            "sendAT": function(cmd) {
+                this.serialPort.write(cmd + "\r");
+            },
+
+            "disconnect3G": function() {
                 var self = this;
-                self.cleanProcess(self.wvdialPid);
-                self.transition( "initialized" );
+                self.handle("sendAT", "AT+CGACT=0,1");
+                self.handle("sendAT", "AT+CGATT=0");   
+                self.cleanProcess(self.pppPid);
+                self.transition("initialized");
             },
 
             "makeTunnel": function(port) {

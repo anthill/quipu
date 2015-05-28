@@ -12,6 +12,20 @@ quipu.on("smsReceived", function(sms){
 
 
 
+// tests to set modem in 3G and ppp
+
+quipu.handle("connect3G");
+
+setTimeout(function(){
+    quipu.handle("disconnect3G");
+}, 30000);
+
+
+
+
+
+
+
 // to monitor what is going on
 
 // quipu.on("*", function (eventName, data){
