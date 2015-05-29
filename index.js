@@ -12,6 +12,7 @@ var QUERY_TIMOUT = 10*1000;
 
 var dongle = new machina.Fsm({
 
+    device: undefined,
     serialPort: undefined,
     pppPid: null,
     sshPid: null,
@@ -72,6 +73,7 @@ var dongle = new machina.Fsm({
                             self.emit("smsReceived", {body: body, from: from});
                         }
 				    });
+                    self.device = device;
                     self.transition("initialized");
                 });
 
@@ -118,7 +120,7 @@ var dongle = new machina.Fsm({
                     
                     setTimeout(function(){
                         console.log("Starting ppp");
-                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", "/dev/tty.HUAWEIMobile-Pcui", "38400", "&"]);
+                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.device, "38400", "&"]);
                         resolve(myProcess.pid);
                     }, 5000);
                         
