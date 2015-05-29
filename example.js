@@ -3,7 +3,7 @@
 var quipu = require("./index.js");
 
 
-quipu.handle("initialize", "/dev/tty.HUAWEIMobile-Pcui");
+quipu.handle("initialize", "/dev/ttyUSB0");
 // quipu.handle("sendSMS", "ehehe", "33671358943");
 
 quipu.on("smsReceived", function(sms){

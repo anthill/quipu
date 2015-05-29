@@ -12,6 +12,7 @@ var QUERY_TIMOUT = 10*1000;
 
 var dongle = new machina.Fsm({
 
+    device: undefined,
     serialPort: undefined,
     pppPid: null,
     sshPid: null,
@@ -57,8 +58,7 @@ var dongle = new machina.Fsm({
 
                 self.serialPort.on("open", function () {
                 	self.serialPort.on('data', function(data) {
-				        // var response = parseATResponse(data);
-				        // self.emit("ATresponse", response)
+
                         var message = data.toString().trim();
                         console.log(data.toString());
                         if(message.slice(0,5) === "+CMTI"){
@@ -71,7 +71,11 @@ var dongle = new machina.Fsm({
                             var body = parts[1]
                             self.emit("smsReceived", {body: body, from: from});
                         }
+                        if(message.indexOf("CONNECT") > -1){
+                            self.emit("connectReceived");
+                        }
 				    });
+                    self.device = device;
                     self.transition("initialized");
                 });
 
@@ -110,17 +114,16 @@ var dongle = new machina.Fsm({
                 new Promise(function(resolve, reject){
 
 
+                    self.handle("sendAT", 'ATH');
+                    self.handle("sendAT", "ATE1");
                     self.handle("sendAT", 'AT+CGDCONT=1,"IP","free"');
-                    self.handle("sendAT", "AT+CGACT=1,1");
-                    self.handle("sendAT", 'AT+CGDATA="PPP",1');
-                    self.handle("sendAT", "ATD*99***1#");
+                    self.handle("sendAT", "ATD*99#");
 
-                    
-                    setTimeout(function(){
+                    self.on("connectReceived", function(){
                         console.log("Starting ppp");
-                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", "/dev/tty.HUAWEIMobile-Pcui", "38400", "&"]);
+                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.device, "38400"]);
                         resolve(myProcess.pid);
-                    }, 5000);
+                    });
                         
                 })
                 .then(function(pid){
@@ -130,7 +133,6 @@ var dongle = new machina.Fsm({
                 .catch(function(err){
                     console.log(err.msg);
                     console.log("Could not connect. Cleanning...");
-                    self.cleanProcess(err.pid);
                 });
 
                 
@@ -145,8 +147,10 @@ var dongle = new machina.Fsm({
             "disconnect3G": function() {
                 var self = this;
                 self.handle("sendAT", "AT+CGACT=0,1");
-                self.handle("sendAT", "AT+CGATT=0");   
+                self.handle("sendAT", "AT+CGATT=0"); 
+                console.log("ppp3", self.pppPid)  
                 self.cleanProcess(self.pppPid);
+                console.log("finished cleanProcess")
                 self.transition("initialized");
             },
 
