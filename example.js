@@ -3,12 +3,26 @@
 var quipu = require("./index.js");
 
 
-quipu.handle("initialize", "/dev/tty.HUAWEIMobile-Pcui");
+quipu.handle("initialize", "/dev/ttyUSB0");
 // quipu.handle("sendSMS", "ehehe", "33671358943");
 
 quipu.on("smsReceived", function(sms){
 	console.log(sms);
 })
+
+
+
+// tests to set modem in 3G and ppp
+
+quipu.handle("connect3G");
+
+setTimeout(function(){
+    quipu.handle("disconnect3G");
+}, 30000);
+
+
+
+
 
 
 
