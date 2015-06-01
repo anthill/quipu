@@ -148,7 +148,6 @@ var dongle = new machina.Fsm({
                 var self = this;
                 self.handle("sendAT", "AT+CGACT=0,1");
                 self.handle("sendAT", "AT+CGATT=0"); 
-                console.log("ppp3", self.pppPid)  
                 self.cleanProcess(self.pppPid);
                 console.log("finished cleanProcess")
                 self.transition("initialized");
