@@ -11,7 +11,6 @@
   "dependencies": {
     "es6-promise": "^2.0.1",
     "serialport": "^1.6.3",
-    "machina": "^0.4.0",
-    "tree-kill": "0.0.6"
+    "machina": "^0.4.0"
   }
 }
