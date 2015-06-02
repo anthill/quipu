@@ -11,14 +11,14 @@ var QUERY_TIMOUT = 10*1000;
 
 var dongle = new machina.Fsm({
 
-    device: undefined,
-    serialPort: undefined,
+    smsDevice: undefined,
+    modemDevice: undefined,
+    smsPort: undefined,
+    modemPort: undefined,
     pppProcess: null,
     sshProcess: null,
 
     initialState: "uninitialized",
-
-
 
     cleanProcess: function(process){
 
@@ -34,6 +34,70 @@ var dongle = new machina.Fsm({
         });
     },
 
+    openPorts: function(baudrate){
+
+        var self = this;
+
+        return new Promise(function(resolve, reject){
+
+            // open sms Port
+            self.smsPort = new SerialPort(self.smsDevice, {
+                baudrate: baudrate ? baudrate : 9600,  
+            });
+
+            self.smsPort.on("open", function() {
+                
+                // open modem Port
+                self.modemPort = new SerialPort(self.modemDevice, {
+                    baudrate: baudrate ? baudrate : 9600,  
+                });
+
+                self.modemPort.on("open", function(){
+                    resolve();
+                });
+
+                self.modemPort.on("error", function(){
+                    reject();
+                });
+
+            });
+
+            self.smsPort.on("error", function(){
+                reject();
+            });
+        });    
+    },
+
+    sendAT: function(port, command){
+        if (port.isOpen())
+            port.write(command + "\r");
+        else
+            console.log('Port ' + port + ' is not open');
+    },
+
+    watchSMS: function(){
+        var self = this;
+
+        this.smsPort.on('data', function(data) {
+
+            var message = data.toString().trim();
+            console.log(data.toString());
+            if(message.slice(0,5) === "+CMTI"){
+                self.smsPort.write('AT+CPMS="ME"');
+                self.smsPort.write('AT+CMGR=0');
+            }
+            if(message.slice(0, 5) === "+CMGR"){
+                var parts = message.split(/\r+\n/);
+                var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
+                var body = parts[1]
+                this.emit("smsReceived", {body: body, from: from});
+            }
+            if(message.indexOf("CONNECT") > -1){
+                this.emit("connectReceived");
+            }
+        });
+    },
+
 
     states: {
         "uninitialized": {
@@ -46,71 +110,40 @@ var dongle = new machina.Fsm({
                 this.smsDevice = devices.sms;
                 this.modemDevice = devices.modem;
 
-                self.serialPort = new SerialPort(this.smsDevice, {
-                    baudrate: baudrate ? baudrate : 9600,  
-                    dataBits: 8,  
-                    parity: 'none',  
-                    stopBits: 1, 
-                    flowControl: false, 
-                    xon : false, 
-                    rtscts:false, 
-                    xoff:false, 
-                    xany:false, 
-                    buffersize:0
-                });
-
-                self.serialPort.on("open", function () {
-                	self.serialPort.on('data', function(data) {
-
-                        var message = data.toString().trim();
-                        console.log(data.toString());
-                        if(message.slice(0,5) === "+CMTI"){
-                            self.handle("sendAT", 'AT+CPMS="ME"');
-                            self.handle("sendAT", 'AT+CMGR=0');
-                        }
-                        if(message.slice(0, 5) === "+CMGR"){
-                            var parts = message.split(/\r+\n/);
-                            var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
-                            var body = parts[1]
-                            self.emit("smsReceived", {body: body, from: from});
-                        }
-                        if(message.indexOf("CONNECT") > -1){
-                            self.emit("connectReceived");
-                        }
-				    });
-
-                    self.device = device;
+                self.openPorts()
+                .then(function(){
                     self.transition("initialized");
+                })
+                .catch(function(err){
+                    console.log(err.msg);
+                    console.log("Could not open ports");
                 });
-
             },
         },
         "initialized": {
         	_onEnter : function () {
-                this.handle("sendAT", "ATE1"); // echo mode makes easier to parse responses
-                this.handle("sendAT", "AT+CMEE=1 "); // more error
-                this.handle("sendAT", "AT+CNMI=2,1,0,2,0"); // to get notification when messages are received
-                console.log('INITIALIZED');
+                this.watchSMS();
+
+                this.smsPort.write("ATE1"); // echo mode makes easier to parse responses
+                this.smsPort.write("AT+CMEE=1 "); // more error
+                this.smsPort.write("AT+CNMI=2,1,0,2,0"); // to get notification when messages are received
+                
+                console.log('INITIALIZED, listening to SMS');
 			},
             "sendSMS": function(message, phone_no) {
-
-                this.serialPort.write("AT+CMGF=1\r");
-                this.serialPort.write('AT+CMGS="' + phone_no + '"\r');
-                this.serialPort.write(message); 
-                this.serialPort.write(Buffer([0x1A]));
-                this.serialPort.write('^z');
-                
+                this.smsPort.write("AT+CMGF=1\r");
+                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
+                this.smsPort.write(message); 
+                this.smsPort.write(Buffer([0x1A]));
+                this.smsPort.write('^z');
             },
             "readUnreadSMS": function() {
-            	this.serialPort.write("AT+CMGF=1\r");
-            	this.serialPort.write('AT+CMGL="REC UNREAD"\r');
+            	this.smsPort.write("AT+CMGF=1\r");
+            	this.smsPort.write('AT+CMGL="REC UNREAD"\r');
             },
             "readAllSMS": function() {            	
-            	this.serialPort.write("AT+CMGF=1\r");
-            	this.serialPort.write('AT+CMGL="ALL"\r');
-            },
-            "sendAT": function(cmd) {
-                this.serialPort.write(cmd + "\r");
+            	this.smsPort.write("AT+CMGF=1\r");
+            	this.smsPort.write('AT+CMGL="ALL"\r');
             },
             "connect3G": function() {
 
@@ -118,11 +151,12 @@ var dongle = new machina.Fsm({
 
                 new Promise(function(resolve, reject){
 
+                    console.log('modem device', self.modemDevice);
 
-                    self.handle("sendAT", 'ATH');
-                    self.handle("sendAT", "ATE1");
-                    self.handle("sendAT", 'AT+CGDCONT=1,"IP","free"');
-                    self.handle("sendAT", "ATD*99#");
+                    self.modemPort.write('ATH');
+                    self.modemPort.write("ATE1");
+                    self.modemPort.write('AT+CGDCONT=1,"IP","free"');
+                    self.modemPort.write("ATD*99#");
 
                     self.on("connectReceived", function(){
                         console.log("Starting ppp");
@@ -137,10 +171,8 @@ var dongle = new machina.Fsm({
                 })
                 .catch(function(err){
                     console.log(err.msg);
-                    console.log("Could not connect. Cleanning...");
+                    console.log("Could not connect. Cleaning...");
                 });
-
-                
             },
         },
 
@@ -149,15 +181,11 @@ var dongle = new machina.Fsm({
                 console.log('3G CONNECTED');
             },
 
-            "sendAT": function(cmd) {
-                this.serialPort.write(cmd + "\r");
-            },
-
             "disconnect3G": function() {
                 var self = this;
 
-                self.handle("sendAT", "AT+CGACT=0,1");
-                self.handle("sendAT", "AT+CGATT=0");
+                self.modemPort.write("AT+CGACT=0,1");
+                self.modemPort.write("AT+CGATT=0");
 
                 self.cleanProcess(self.pppProcess)
                 .then(function(code){
@@ -207,8 +235,4 @@ var dongle = new machina.Fsm({
     }
 });
 
-
-
 module.exports = dongle;
-
-
