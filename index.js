@@ -46,13 +46,15 @@ var dongle = new machina.Fsm({
             });
 
             self.smsPort.on("open", function() {
-                
+                console.log('SMS port opened');
+
                 // open modem Port
                 self.modemPort = new SerialPort(self.modemDevice, {
                     baudrate: baudrate ? baudrate : 9600,  
                 });
 
                 self.modemPort.on("open", function(){
+                    console.log('Modem port opened');
                     resolve();
                 });
 
