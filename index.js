@@ -40,11 +40,13 @@ var dongle = new machina.Fsm({
             "*": function() {
                 this.deferUntilTransition("initialized");
             },
-            "initialize": function(device, baudrate) {
+            "initialize": function(devices, baudrate) {
 
                 var self = this;
+                this.smsDevice = devices.sms;
+                this.modemDevice = devices.modem;
 
-                self.serialPort = new SerialPort(device, {
+                self.serialPort = new SerialPort(this.smsDevice, {
                     baudrate: baudrate ? baudrate : 9600,  
                     dataBits: 8,  
                     parity: 'none',  
@@ -124,7 +126,7 @@ var dongle = new machina.Fsm({
 
                     self.on("connectReceived", function(){
                         console.log("Starting ppp");
-                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.device, "38400"]);
+                        var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
                         resolve(myProcess);
                     });
                         

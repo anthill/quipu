@@ -3,7 +3,12 @@
 var quipu = require("./index.js");
 
 
-quipu.handle("initialize", "/dev/ttyUSB0");
+var devices = {
+	modem: "dev/ttyUSB0",
+	sms: "dev/tty/USB2"
+};
+
+quipu.handle("initialize", devices);
 
 quipu.on("smsReceived", function(sms){
 	console.log(sms);
