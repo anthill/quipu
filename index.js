@@ -86,7 +86,7 @@ var dongle = new machina.Fsm({
         "initialized": {
         	_onEnter : function () {
                 this.handle("sendAT", "ATE1"); // echo mode makes easier to parse responses
-                this.handle("sendAT", "AT+CMEE=1 "); // more error
+                this.handle("sendAT", "AT+CMEE=2"); // more error
                 this.handle("sendAT", "AT+CNMI=2,1,0,2,0"); // to get notification when messages are received
                 console.log('INITIALIZED');
 			},
@@ -119,6 +119,9 @@ var dongle = new machina.Fsm({
 
                     self.handle("sendAT", 'ATH');
                     self.handle("sendAT", "ATE1");
+                    // self.handle("sendAT", "AT+CGATT=1");
+                    // self.handle("sendAT", "AT+CGACT=1,1");
+                    // self.handle("sendAT", 'AT+CGDATA="PPP",1');
                     self.handle("sendAT", 'AT+CGDCONT=1,"IP","free"');
                     self.handle("sendAT", "ATD*99#");
 
