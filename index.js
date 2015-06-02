@@ -42,7 +42,7 @@ var dongle = new machina.Fsm({
 
             // open sms Port
             self.smsPort = new SerialPort(self.smsDevice, {
-                baudrate: baudrate ? baudrate : 9600,  
+                baudrate: baudrate ? baudrate : 9600
             });
 
             self.smsPort.on("open", function() {
@@ -50,7 +50,7 @@ var dongle = new machina.Fsm({
 
                 // open modem Port
                 self.modemPort = new SerialPort(self.modemDevice, {
-                    baudrate: baudrate ? baudrate : 9600,  
+                    baudrate: baudrate ? baudrate : 9600 
                 });
 
                 self.modemPort.on("open", function(){
@@ -85,17 +85,14 @@ var dongle = new machina.Fsm({
             var message = data.toString().trim();
             console.log(data.toString());
             if(message.slice(0,5) === "+CMTI"){
-                self.smsPort.write('AT+CPMS="ME"');
-                self.smsPort.write('AT+CMGR=0');
+                self.smsPort.write('AT+CPMS="ME"\r');
+                self.smsPort.write('AT+CMGR=0\r');
             }
             if(message.slice(0, 5) === "+CMGR"){
                 var parts = message.split(/\r+\n/);
                 var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
                 var body = parts[1]
-                this.emit("smsReceived", {body: body, from: from});
-            }
-            if(message.indexOf("CONNECT") > -1){
-                this.emit("connectReceived");
+                self.emit("smsReceived", {body: body, from: from});
             }
         });
     },
@@ -126,9 +123,9 @@ var dongle = new machina.Fsm({
         	_onEnter : function () {
                 this.watchSMS();
 
-                this.smsPort.write("ATE1"); // echo mode makes easier to parse responses
-                this.smsPort.write("AT+CMEE=1 "); // more error
-                this.smsPort.write("AT+CNMI=2,1,0,2,0"); // to get notification when messages are received
+                this.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
+                this.smsPort.write("AT+CMEE=2\r"); // more error
+                this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
                 
                 console.log('INITIALIZED, listening to SMS');
 			},
@@ -155,10 +152,20 @@ var dongle = new machina.Fsm({
 
                     console.log('modem device', self.modemDevice);
 
-                    self.modemPort.write('ATH');
-                    self.modemPort.write("ATE1");
-                    self.modemPort.write('AT+CGDCONT=1,"IP","free"');
-                    self.modemPort.write("ATD*99#");
+                    self.modemPort.on('data', function(data) {
+
+                        var message = data.toString().trim();
+                        console.log(data.toString());
+                    
+                        if(message.indexOf("CONNECT") > -1){
+                            self.emit("connectReceived");
+                        }
+                    });
+
+                    self.modemPort.write('ATH\r');
+                    self.modemPort.write("ATE1\r");
+                    self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
+                    self.modemPort.write("ATD*99#\r");
 
                     self.on("connectReceived", function(){
                         console.log("Starting ppp");
@@ -186,8 +193,8 @@ var dongle = new machina.Fsm({
             "disconnect3G": function() {
                 var self = this;
 
-                self.modemPort.write("AT+CGACT=0,1");
-                self.modemPort.write("AT+CGATT=0");
+                self.modemPort.write("AT+CGACT=0,1\r");
+                self.modemPort.write("AT+CGATT=0\r");
 
                 self.cleanProcess(self.pppProcess)
                 .then(function(code){
