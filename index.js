@@ -148,7 +148,7 @@ var dongle = new machina.Fsm({
 
                 var self = this;
 
-                new Promise(function(resolve, reject){
+                return new Promise(function(resolve, reject){
 
                     console.log('modem device', self.modemDevice);
 
@@ -202,12 +202,12 @@ var dongle = new machina.Fsm({
                 });
             },
 
-            "openTunnel": function(port) {
+            "openTunnel": function(queenPort, antPort) {
 
                 var self = this;
 
                 new Promise(function(resolve, reject){
-                    var myProcess = spawn("ssh", ["-N", "-R", port + ":localhost:9632", "kerrigan"]);
+                    var myProcess = spawn("ssh", ["-N", "-R", queenPort + ":localhost:" + antPort, "kerrigan"]);
                     console.log("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
 
                     myProcess.stderr.on("data", function(chunkBuffer){
@@ -234,7 +234,7 @@ var dongle = new machina.Fsm({
 
             "closeTunnel": function() {
 
-                this.cleanProcess(this.sshProcess)
+                return this.cleanProcess(this.sshProcess)
                 .then(function(){
                     console.log('SSH tunnel closed');
                 });

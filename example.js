@@ -12,6 +12,20 @@ quipu.handle("initialize", devices);
 
 quipu.on("smsReceived", function(sms){
 	console.log(sms);
+	if (sms.body === 'connect3G' && sms.from === '+33643505643'){
+		quipu.handle('connect3G')
+		.then(function(){
+			quipu.handle('openTunnel');
+		});
+	}
+
+	if (sms.body === 'disconnect3G' && sms.from === '+33643505643'){
+		quipu.handle('closeTunnel')
+		.then(function(){
+			quipu.handle('disconnect3G');
+		});
+	}
+		
 });
 
 // quipu.handle("connect3G");
