@@ -207,7 +207,7 @@ var dongle = new machina.Fsm({
                 var self = this;
 
                 new Promise(function(resolve, reject){
-                    var myProcess = spawn("ssh", ["-N", "-R", port + ":localhost:9999", "ants"]);
+                    var myProcess = spawn("ssh", ["-N", "-R", port + ":localhost:9632", "ants"]);
                     console.log("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
 
                     myProcess.stderr.on("data", function(chunkBuffer){
