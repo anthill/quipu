@@ -1,13 +1,66 @@
 "use strict";
 
-var SerialPort = require("serialport").SerialPort
+var SerialPort = require("serialport").SerialPort;
 var machina = require('machina');
 var spawn = require('child_process').spawn;
 var Promise = require('es6-promise').Promise;
 
+var activateSMS = require('./activateSMS.js');
+
 var CONNECTION_TIMOUT = 20 * 1000;
 var SSH_TIMEOUT = 3 * 1000;
 var QUERY_TIMOUT = 10*1000;
+
+
+function cleanProcess(process){
+    console.log('Stopping process...');
+
+    return new Promise(function(resolve, reject){
+        console.log('killing process id', process.pid);
+        process.kill();
+        process.on('exit', function(code){
+            console.log('Process killed');
+            resolve(code);
+        });
+    });
+}
+
+function openPorts(devices, baudrate){
+    var ports = {};
+
+    return new Promise(function(resolve, reject){
+
+        // open sms Port
+        ports.sms = new SerialPort(devices.sms, {
+            baudrate: baudrate ? baudrate : 9600
+        });
+
+        ports.sms.on("open", function() {
+            console.log('SMS port opened');
+
+            // open modem Port
+            ports.modem = new SerialPort(devices.modem, {
+                baudrate: baudrate ? baudrate : 9600 
+            });
+
+            ports.modem.on("open", function(){
+                console.log('Modem port opened');
+                resolve(ports);
+            });
+
+            ports.modem.on("error", function(){
+                reject();
+            });
+
+        });
+
+        ports.sms.on("error", function(){
+            reject();
+        });
+    });
+} 
+
+
 
 var dongle = new machina.Fsm({
 
@@ -18,85 +71,25 @@ var dongle = new machina.Fsm({
     pppProcess: null,
     sshProcess: null,
 
-    initialState: "uninitialized",
+    // these SMS functionalities will be initialized later by enableSMS function
+    sendSMS: undefined,
+    readUnreadSMS: undefined,
+    readAllSMS: undefined,
 
-    cleanProcess: function(process){
+    enableSMS: function(port){
 
-        console.log('Stopping process...');
-
-        return new Promise(function(resolve, reject){
-            console.log('killing process id', process.pid);
-            process.kill();
-            process.on('exit', function(code){
-                console.log('Process killed');
-                resolve(code);
-            });
-        });
-    },
-
-    openPorts: function(baudrate){
-
-        var self = this;
-
-        return new Promise(function(resolve, reject){
-
-            // open sms Port
-            self.smsPort = new SerialPort(self.smsDevice, {
-                baudrate: baudrate ? baudrate : 9600
-            });
-
-            self.smsPort.on("open", function() {
-                console.log('SMS port opened');
-
-                // open modem Port
-                self.modemPort = new SerialPort(self.modemDevice, {
-                    baudrate: baudrate ? baudrate : 9600 
-                });
-
-                self.modemPort.on("open", function(){
-                    console.log('Modem port opened');
-                    resolve();
-                });
-
-                self.modemPort.on("error", function(){
-                    reject();
-                });
-
-            });
-
-            self.smsPort.on("error", function(){
-                reject();
-            });
-        });    
-    },
-
-    sendAT: function(port, command){
-        if (port.isOpen())
-            port.write(command + "\r");
+        if (port.isOpen()){
+            this.sendSMS = activateSMS.send(port);
+            this.watchSMS = activateSMS.watch(port);
+            this.readUnreadSMS = activateSMS.readUnread(port);
+            this.readAllSMS = activateSMS.readAll(port);
+        }
         else
             console.log('Port ' + port + ' is not open');
     },
 
-    watchSMS: function(){
-        var self = this;
 
-        this.smsPort.on('data', function(data) {
-
-            var message = data.toString().trim();
-            console.log(data.toString());
-            if(message.slice(0,5) === "+CMTI"){
-                self.smsPort.write('AT+CPMS="ME"\r');
-                self.smsPort.write('AT+CMGR=0\r');
-            }
-            if(message.slice(0, 5) === "+CMGR"){
-                var parts = message.split(/\r+\n/);
-                var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
-                var body = parts[1]
-                self.emit("smsReceived", {body: body, from: from});
-            }
-        });
-    },
-
+    initialState: "uninitialized", 
 
     states: {
         "uninitialized": {
@@ -109,8 +102,20 @@ var dongle = new machina.Fsm({
                 this.smsDevice = devices.sms;
                 this.modemDevice = devices.modem;
 
-                self.openPorts()
-                .then(function(){
+                openPorts(devices)
+                .then(function(ports){
+                    self.smsPort = ports.sms;
+                    self.modemPort = ports.modem;
+
+                    self.enableSMS(self.smsPort);
+
+                    // all this was in _onEnter of "initialized" state, but i believe it belongs here
+                    self.watchSMS();
+
+                    self.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
+                    self.smsPort.write("AT+CMEE=2\r"); // more error
+                    self.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
+
                     self.transition("initialized");
                 })
                 .catch(function(err){
@@ -120,35 +125,15 @@ var dongle = new machina.Fsm({
             },
         },
         "initialized": {
-        	_onEnter : function () {
-                this.watchSMS();
-
-                this.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
-                this.smsPort.write("AT+CMEE=2\r"); // more error
-                this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
-                
+        	_onEnter : function () {    
                 console.log('INITIALIZED, listening to SMS');
 			},
-            "sendSMS": function(message, phone_no) {
-                this.smsPort.write("AT+CMGF=1\r");
-                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
-                this.smsPort.write(message); 
-                this.smsPort.write(Buffer([0x1A]));
-                this.smsPort.write('^z');
-            },
-            "readUnreadSMS": function() {
-            	this.smsPort.write("AT+CMGF=1\r");
-            	this.smsPort.write('AT+CMGL="REC UNREAD"\r');
-            },
-            "readAllSMS": function() {            	
-            	this.smsPort.write("AT+CMGF=1\r");
-            	this.smsPort.write('AT+CMGL="ALL"\r');
-            },
+
             "connect3G": function() {
 
                 var self = this;
 
-                return new Promise(function(resolve, reject){
+                new Promise(function(resolve, reject){
 
                     console.log('modem device', self.modemDevice);
 
@@ -186,18 +171,20 @@ var dongle = new machina.Fsm({
         },
 
         "3G_connected": {
-            _onEnter : function () {
+            _onEnter: function(queenPort, antPort) {
                 console.log('3G CONNECTED');
+                this.handle('openTunnel', queenPort, antPort);
             },
 
-            "disconnect3G": function() {
+            _onExit: function(){
                 var self = this;
 
+                // disconnect 3G
                 self.modemPort.write("AT+CGACT=0,1\r");
                 self.modemPort.write("AT+CGATT=0\r");
 
-                self.cleanProcess(self.pppProcess)
-                .then(function(code){
+                self.cleanProcess(self.pppProcess) // clean ppp process
+                .then(function(){
                     self.transition("initialized");
                 });
             },
@@ -223,25 +210,80 @@ var dongle = new machina.Fsm({
                 })
                 .then(function(process){
                     self.sshProcess = process;
-                    // self.transition( "3G_tunnel" );
+                    self.transition('tunnelling');
                 })
                 .catch(function(err){
                     console.log(err.msg);
-                    console.log("Could not make the tunnel. Cleanning...");
+                    console.log("Could not make the tunnel. Cleaning...");
                     self.cleanProcess(err.process);
                 });
             },
 
-            "closeTunnel": function() {
+            "disconnect3G": function() {
+                var self = this;
 
-                return this.cleanProcess(this.sshProcess)
+                self.modemPort.write("AT+CGACT=0,1\r");
+                self.modemPort.write("AT+CGATT=0\r");
+
+                self.cleanProcess(self.pppProcess)
+                .then(function(code){
+                    self.transition("initialized");
+                });
+            }
+        },
+
+        "tunnelling": {
+            _onEnter: function(){
+                console.log('TUNNELLING');
+                this.sendSMS('tunnelling', '+33643505643');
+            },
+
+            "closeTunnel": function() {
+                console.log('Closing SSH tunnel');
+
+                this.cleanProcess(this.sshProcess)
                 .then(function(){
                     console.log('SSH tunnel closed');
+                    self.handle('disconnect3G');
                 });
+            },
+
+            "disconnect3G": function(){
+                this.deferUntilTransition("3G_connected");
+                this.transition('3G_connected');
             }
 
         }
+    },
+
+
+    // You can use these functions from the outside
+
+    sendAT: function(port, command){
+        if (port.isOpen())
+            port.write(command + "\r");
+        else
+            console.log('Port ' + port + ' is not open');
+    },
+
+    initialize: function(devices){
+        this.handle('initialize', devices);
+    },
+
+    openSSH: function(){ // not clear with the tunnel opening
+        this.handle('connect3G');
+    },
+
+    closeSSH: function(){ // not clear with the 3G disconnection 
+        this.handle('closeTunnel');
     }
+
+    // You can also use 
+    // * sendSMS(message, phone_no)
+    // * watchSMS()
+    // * readAllSMS()
+    // * readUnreadSMS()
+
 });
 
 module.exports = dongle;
