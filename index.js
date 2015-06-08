@@ -90,21 +90,26 @@ module.exports = function(device){
                     ports.sms.write("AT+CMEE=2\r"); // more error
                     ports.sms.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
 
-                    // listen to sms
+                    ports.modem.write("AT+CMEE=2\r"); // more error
+
+                    // sms port listeners
                     ports.sms.on('data', function(data) {
 
                         var message = data.toString().trim();
-                        debug("Raw AT message:\n", data.toString());
+                        debug("Raw AT message from sms:\n", data.toString());
+                        // sms notification
                         if(message.slice(0,5) === "+CMTI"){
                             ports.sms.write('AT+CPMS="ME"\r');
                             ports.sms.write('AT+CMGR=0\r');
                         }
+                        // sms result
                         if(message.slice(0, 5) === "+CMGR"){
                             var parts = message.split(/\r+\n/);
                             var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
                             var body = parts[1];
                             self.emit("smsReceived", {body: body, from: from});
                         }
+                        // signal strength
                         if(message.slice(0, 5) === "^RSSI"){
                             try {
                                 var level = message.match(/:\s(\d+)/)[1];
@@ -112,6 +117,16 @@ module.exports = function(device){
                             } catch(err){
                                 console.log(err)
                             }
+                        }
+                    });
+
+                    // modem port listeners
+                    ports.modem.on('data', function(data) {
+                        var message = data.toString().trim();
+                        debug("Raw AT message from modem:\n", data.toString());
+
+                        if(message.indexOf("CONNECT") > -1){
+                            self.emit("connectReceived");
                         }
                     });
 
@@ -126,6 +141,7 @@ module.exports = function(device){
             });
         },
 
+        // globally available commands
         sendSMS: function(message, phone_no){
 
             this.portsP
@@ -142,39 +158,34 @@ module.exports = function(device){
             
         },
 
+        sendAT: function(portName, command){
+            this.portsP
+            .then(function(ports){
+                ports[portName].write(command + "\r");
+            })
+            .catch(function(err){
+                console.log(err);
+            });
+        },
+
+
 
         initialState: "initialized", 
 
         states: {
 
             "initialized": {
-                _onEnter : function () {
-                    this.handle("sendAT", "ATE1"); // echo mode makes easier to parse responses
-                    this.handle("sendAT", "AT+CMEE=2"); // more error
-                    this.handle("sendAT", "AT+CNMI=2,1,0,2,0"); // to get notification when messages are received
-                    console.log('INITIALIZED', this.smsPort);
-                },
 
-                "connect3G": function() {
+                "open3G": function() {
 
                     var self = this;
 
                     new Promise(function(resolve, reject){
 
-                        self.modemPort.on('data', function(data) {
-
-                            var message = data.toString().trim();
-                            console.log(data.toString());
-                        
-                            if(message.indexOf("CONNECT") > -1){
-                                self.emit("connectReceived");
-                            }
-                        });
-
-                        self.modemPort.write('ATH\r');
-                        self.modemPort.write("ATE1\r");
-                        self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
-                        self.modemPort.write("ATD*99#\r");
+                        self.sendAT("modem", 'ATH');
+                        self.sendAT("modem", "ATE1");
+                        self.sendAT("modem", 'AT+CGDCONT=1,"IP","free"');
+                        self.sendAT("modem", "ATD*99#");
 
                         self.on("connectReceived", function(){
                             debug("Starting ppp");
@@ -197,17 +208,16 @@ module.exports = function(device){
             "3G_connected": {
                 _onEnter: function(queenPort, antPort) {
                     console.log('3G CONNECTED');
-                    this.handle('openTunnel', queenPort, antPort);
                 },
 
                 _onExit: function(){
                     var self = this;
 
                     // disconnect 3G
-                    self.modemPort.write("AT+CGACT=0,1\r");
-                    self.modemPort.write("AT+CGATT=0\r");
+                    self.sendAT("modem", "AT+CGACT=0,1");
+                    self.sendAT("modem", "AT+CGATT=0");
 
-                    self.cleanProcess(self.pppProcess) // clean ppp process
+                    cleanProcess(self.pppProcess) // clean ppp process
                     .then(function(){
                         self.transition("initialized");
                     });
@@ -239,17 +249,17 @@ module.exports = function(device){
                     .catch(function(err){
                         console.log(err.msg);
                         console.log("Could not make the tunnel. Cleaning...");
-                        self.cleanProcess(err.process);
+                        cleanProcess(err.process);
                     });
                 },
 
-                "disconnect3G": function() {
+                "close3G": function() {
                     var self = this;
 
-                    self.modemPort.write("AT+CGACT=0,1\r");
-                    self.modemPort.write("AT+CGATT=0\r");
+                    self.sendAT("modem", "AT+CGACT=0,1");
+                    self.sendAT("modem", "AT+CGATT=0");
 
-                    self.cleanProcess(self.pppProcess)
+                    cleanProcess(self.pppProcess)
                     .then(function(code){
                         self.transition("initialized");
                     });
@@ -265,43 +275,20 @@ module.exports = function(device){
                 "closeTunnel": function() {
                     console.log('Closing SSH tunnel');
 
-                    this.cleanProcess(this.sshProcess)
+                    cleanProcess(this.sshProcess)
                     .then(function(){
                         console.log('SSH tunnel closed');
-                        self.handle('disconnect3G');
+                        self.handle('3G_connected');
                     });
                 },
 
-                "disconnect3G": function(){
-                    this.deferUntilTransition("3G_connected");
-                    this.transition('3G_connected');
+                "close3G": function(){
+                    this.deferUntilTransition("initialized");
+                    this.transition('initialized');
                 }
 
             }
-        },
-
-
-        // You can use these functions from the outside
-
-        sendAT: function(port, command){
-            if (port.isOpen())
-                port.write(command + "\r");
-            else
-                console.log('Port ' + port + ' is not open');
-        },
-
-        // initialize: function(devices){
-        //     this.handle('initialize', devices);
-        // },
-
-        openSSH: function(){ // not clear with the tunnel opening
-            this.handle('connect3G');
-        },
-
-        closeSSH: function(){ // not clear with the 3G disconnection 
-            this.handle('closeTunnel');
         }
-
 
     });
 }

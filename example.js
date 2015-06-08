@@ -25,4 +25,15 @@ quipu.on("smsReceived", function(sms){
 		
 });
 
+// spawning a 3G connexion and closing it after 10 seconds
+
+
+quipu.handle("open3G");
+
+
+// setTimeout(function(){
+// 	console.log("Closing 3G.")
+// 	quipu.handle("close3G");
+// }, 10000)
+
 module.exports = quipu;
