@@ -3,45 +3,23 @@
 var quipu = require("./index.js");
 
 
-quipu.handle("initialize", "/dev/ttyUSB0");
+var devices = {
+	modem: "/dev/ttyUSB0",
+	sms: "/dev/ttyUSB2"
+};
+
+quipu.initialize(devices);
 
 quipu.on("smsReceived", function(sms){
 	console.log(sms);
+	if (sms.body === 'open ssh' && sms.from === '+33643505643'){
+		quipu.openSSH();
+	}
+
+	if (sms.body === 'close ssh' && sms.from === '+33643505643'){
+		quipu.closeSSH();
+	}
+		
 });
 
-quipu.handle("connect3G");
-
 module.exports = quipu;
-
-
-
-// module.exports = quipu;
-// quipu.handle("sendSMS", "ehehe", "33671358943");
-
-
-
-
-
-// tests to set modem in 3G and ppp
-
-
-
-// setTimeout(function(){
-//     quipu.handle("openTunnel");
-// }, 10000);
-
-
-
-
-
-
-
-// to monitor what is going on
-
-// quipu.on("*", function (eventName, data){
-//     console.log("this thing happened:", eventName);
-// });
-
-// quipu.on("transition", function (data){
-//     console.log("we just transitioned from " + data.fromState + " to " + data.toState);
-// });
