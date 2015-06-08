@@ -1,19 +1,52 @@
 # Quipu
 
-This modules provides modem functionnalities in node.js.
+This modules provides SMS and 3G functionnalities in node.js.
 
-## Sending and receiving sms
+From [Wikipedia article](http://en.wikipedia.org/wiki/Quipu):
+"A quipu usually consisted of colored, spun, and plied thread or strings made from cotton or camelid fiber. For the Inca, the system aided in collecting data and keeping records, ranging from monitoring tax obligations, properly collecting census records, calendrical information, and military organization."
+
+## Getting started
 
 ```
-var dongle = require("graham");
+var quipu = require("./index.js");
 
-dongle.handle("initialize", "/dev/ttyUSB0");
-dongle.handle("sendSMS", "Here is my text message", "33671******");
+// initilize the device
+
+var devices = {
+    modem: "/dev/ttyUSB0",
+    sms: "/dev/ttyUSB2"
+};
+
+quipu.handle("initialize", devices);
+
+// sending a SMS
+quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
+
+// receiving SMS
+quipu.on("smsReceived", function(sms){
+    console.log(sms);       
+});
+
+// spawning a 3G connexion and closing it after 30 seconds
+quipu.handle("open3G");
+
+setTimeout(function(){
+    quipu.handle("close3G");
+}, 30000)
+
+
+// open a reverse ssh tunnel towards "kerrigan" (must be set in your ~/.ssh/config)
+quipu.handle("openTunnel", 2222, 9632, "kerrigan");
+
+setTimeout(function(){
+    quipu.handle("closeTunnel");
+}, 30000)
+
 ```
 
 
 
-## References
+### References
 
 AT commands:
 
@@ -34,4 +67,5 @@ PPP:
 - [3G and ppp](https://wiki.archlinux.org/index.php/3G_and_GPRS_modems_with_pppd)
 - [reference](http://www.tldp.org/HOWTO/PPP-HOWTO/x761.html)
 - [10 min guide](http://www.linuxjournal.com/article/2109?page=0,0)
-- 
+
+
