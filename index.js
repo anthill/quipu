@@ -8,6 +8,12 @@ var Promise = require('es6-promise').Promise;
 var CONNECTION_TIMOUT = 20 * 1000;
 var SSH_TIMEOUT = 3 * 1000;
 var QUERY_TIMOUT = 10*1000;
+var DEBUG = true;
+
+var debug = function() {
+    if (DEBUG)
+        console.log.apply(console, arguments);
+}
 
 var dongle = new machina.Fsm({
 
@@ -17,18 +23,19 @@ var dongle = new machina.Fsm({
     modemPort: undefined,
     pppProcess: null,
     sshProcess: null,
+    signalStrength: undefined,
 
     initialState: "uninitialized",
 
     cleanProcess: function(process){
 
-        console.log('Stopping process...');
+        debug('Stopping process...');
 
         return new Promise(function(resolve, reject){
-            console.log('killing process id', process.pid);
+            debug('killing process id', process.pid);
             process.kill();
             process.on('exit', function(code){
-                console.log('Process killed');
+                debug('Process killed');
                 resolve(code);
             });
         });
@@ -46,7 +53,7 @@ var dongle = new machina.Fsm({
             });
 
             self.smsPort.on("open", function() {
-                console.log('SMS port opened');
+                debug('SMS port opened');
 
                 // open modem Port
                 self.modemPort = new SerialPort(self.modemDevice, {
@@ -54,7 +61,7 @@ var dongle = new machina.Fsm({
                 });
 
                 self.modemPort.on("open", function(){
-                    console.log('Modem port opened');
+                    debug('Modem port opened');
                     resolve();
                 });
 
@@ -83,16 +90,27 @@ var dongle = new machina.Fsm({
         this.smsPort.on('data', function(data) {
 
             var message = data.toString().trim();
-            console.log(data.toString());
+            debug("Raw AT message from sms:\n", data.toString());
+            // sms notifications
             if(message.slice(0,5) === "+CMTI"){
                 self.smsPort.write('AT+CPMS="ME"\r');
                 self.smsPort.write('AT+CMGR=0\r');
             }
+            // sms content
             if(message.slice(0, 5) === "+CMGR"){
                 var parts = message.split(/\r+\n/);
                 var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
                 var body = parts[1]
                 self.emit("smsReceived", {body: body, from: from});
+            }
+            // signal strength
+            if(message.slice(0, 5) === "^RSSI"){
+                try {
+                    var level = message.match(/:\s(\d+)/)[1];
+                    self.signalStrength = parseInt(level);
+                } catch(err){
+                    console.log(err);
+                }
             }
         });
     },
@@ -127,7 +145,7 @@ var dongle = new machina.Fsm({
                 this.smsPort.write("AT+CMEE=2\r"); // more error
                 this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
                 
-                console.log('INITIALIZED, listening to SMS');
+                debug('INITIALIZED, listening to SMS');
 			},
             "sendSMS": function(message, phone_no) {
                 this.smsPort.write("AT+CMGF=1\r");
@@ -136,26 +154,18 @@ var dongle = new machina.Fsm({
                 this.smsPort.write(Buffer([0x1A]));
                 this.smsPort.write('^z');
             },
-            "readUnreadSMS": function() {
-            	this.smsPort.write("AT+CMGF=1\r");
-            	this.smsPort.write('AT+CMGL="REC UNREAD"\r');
-            },
-            "readAllSMS": function() {            	
-            	this.smsPort.write("AT+CMGF=1\r");
-            	this.smsPort.write('AT+CMGL="ALL"\r');
-            },
-            "connect3G": function() {
+            "open3G": function() {
 
                 var self = this;
 
                 return new Promise(function(resolve, reject){
 
-                    console.log('modem device', self.modemDevice);
+                    debug('modem device', self.modemDevice);
 
                     self.modemPort.on('data', function(data) {
 
                         var message = data.toString().trim();
-                        console.log(data.toString());
+                        debug("Raw AT message from modem:\n", data.toString());
                     
                         if(message.indexOf("CONNECT") > -1){
                             self.emit("connectReceived");
@@ -189,8 +199,14 @@ var dongle = new machina.Fsm({
             _onEnter : function () {
                 console.log('3G CONNECTED');
             },
-
-            "disconnect3G": function() {
+            "sendSMS": function(message, phone_no) {
+                this.smsPort.write("AT+CMGF=1\r");
+                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
+                this.smsPort.write(message); 
+                this.smsPort.write(Buffer([0x1A]));
+                this.smsPort.write('^z');
+            },
+            "close3G": function() {
                 var self = this;
 
                 self.modemPort.write("AT+CGACT=0,1\r");
@@ -202,17 +218,17 @@ var dongle = new machina.Fsm({
                 });
             },
 
-            "openTunnel": function(queenPort, antPort) {
+            "openTunnel": function(queenPort, antPort, target) {
 
                 var self = this;
 
                 new Promise(function(resolve, reject){
-                    var myProcess = spawn("ssh", ["-N", "-R", queenPort + ":localhost:" + antPort, "kerrigan"]);
-                    console.log("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
+                    var myProcess = spawn("ssh", ["-N", "-R", queenPort + ":localhost:" + antPort, target]);
+                    debug("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
 
                     myProcess.stderr.on("data", function(chunkBuffer){
                         var message = chunkBuffer.toString();
-                        console.log("=> " + message);
+                        debug("=> " + message);
                         if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
                             reject({process: myProcess, msg:"Port already in use."});
                         }
@@ -238,6 +254,29 @@ var dongle = new machina.Fsm({
                 .then(function(){
                     console.log('SSH tunnel closed');
                 });
+            }
+
+        },
+
+        "tunnelling": {
+            _onEnter: function(){
+                debug('TUNNELLING');
+            },
+
+            "closeTunnel": function() {
+                debug('Closing SSH tunnel');
+
+                cleanProcess(this.sshProcess)
+                .then(function(){
+                    debug('SSH tunnel closed');
+                    self.transition('3G_connected');
+                });
+            },
+
+            "close3G": function(){
+                this.handle("closeTunnel");
+                this.deferUntilTransition("3G_connected");
+                this.transition('3G_connected');
             }
 
         }

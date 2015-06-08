@@ -2,6 +2,7 @@
 
 var quipu = require("./index.js");
 
+// initilize the device
 
 var devices = {
 	modem: "/dev/ttyUSB0",
@@ -10,30 +11,29 @@ var devices = {
 
 quipu.handle("initialize", devices);
 
-quipu.on("smsReceived", function(sms){
-	console.log(sms);
-	if (sms.body === 'connect3G' && sms.from === '+33643505643'){
-		quipu.handle('connect3G')
-		.then(function(){
-			quipu.handle('openTunnel');
-		});
-	}
+// sending a SMS
+quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
 
-	if (sms.body === 'disconnect3G' && sms.from === '+33643505643'){
-		quipu.handle('closeTunnel')
-		.then(function(){
-			quipu.handle('disconnect3G');
-		});
-	}
-		
+// receiving SMS
+quipu.on("smsReceived", function(sms){
+	console.log(sms);		
 });
 
-// quipu.handle("connect3G");
+// spawning a 3G connexion and closing it after 30 seconds
+quipu.handle("open3G");
 
-// quipu.handle("sendSMS", "ehehe", "33671358943");
+setTimeout(function(){
+	quipu.handle("close3G");
+}, 30000)
 
-// setTimeout(function(){
-//     quipu.handle("openTunnel");
-// }, 10000);
+
+// open a reverse ssh tunnel towards "kerrigan" (must be set in your ~/.ssh/config)
+quipu.handle("openTunnel", 2222, 9632, "kerrigan");
+
+setTimeout(function(){
+	quipu.handle("closeTunnel");
+}, 30000)
+
+
 
 module.exports = quipu;
