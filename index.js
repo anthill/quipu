@@ -8,7 +8,7 @@ var Promise = require('es6-promise').Promise;
 var CONNECTION_TIMOUT = 20 * 1000;
 var SSH_TIMEOUT = 3 * 1000;
 var QUERY_TIMOUT = 10*1000;
-var DEBUG = true;
+var DEBUG = process.env.DEBUG ? process.env.DEBUG : false;
 
 var debug = function() {
     if (DEBUG)
