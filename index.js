@@ -77,7 +77,7 @@ var dongle = new machina.Fsm({
         });    
     },
 
-    sendAT: function(port, command){
+    "sendAT": function(port, command){
         if (port.isOpen())
             port.write(command + "\r");
         else
@@ -144,7 +144,7 @@ var dongle = new machina.Fsm({
                 this.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
                 this.smsPort.write("AT+CMEE=2\r"); // more error
                 this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
-                
+                this.smsPort.write("AT+CMGF=1\r"); // text mode for sms
                 debug('INITIALIZED, listening to SMS');
             },
             "sendSMS": function(message, phone_no) {
@@ -239,7 +239,7 @@ var dongle = new machina.Fsm({
                 })
                 .then(function(process){
                     self.sshProcess = process;
-                    // self.transition( "3G_tunnel" );
+                    self.transition( "tunnelling" );
                 })
                 .catch(function(err){
                     console.log(err.msg);
