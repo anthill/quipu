@@ -5,14 +5,17 @@ var machina = require('machina');
 var spawn = require('child_process').spawn;
 var Promise = require('es6-promise').Promise;
 
-var CONNECTION_TIMOUT = 20 * 1000;
-var SSH_TIMEOUT = 3 * 1000;
-var QUERY_TIMOUT = 10*1000;
+var CONNECTION_TIMEOUT = 20 * 1000;
+var SSH_TIMEOUT = 10 * 1000;
+var QUERY_TIMOUT = 10 * 1000;
 var DEBUG = process.env.DEBUG ? process.env.DEBUG : false;
 
 var debug = function() {
-    if (DEBUG)
+    if (DEBUG) {
+        console.log("DEBUG from quipu:");
         console.log.apply(console, arguments);
+        console.log("==================");
+    };
 }
 
 var dongle = new machina.Fsm({
@@ -109,7 +112,7 @@ var dongle = new machina.Fsm({
                     var level = message.match(/:\s(\d+)/)[1];
                     self.signalStrength = parseInt(level);
                 } catch(err){
-                    console.log(err);
+                    console.log("error in watchSMS", err);
                 }
             }
         });
@@ -132,7 +135,7 @@ var dongle = new machina.Fsm({
                     self.transition("initialized");
                 })
                 .catch(function(err){
-                    console.log(err.msg);
+                    console.log("error in initialize", err.msg);
                     console.log("Could not open ports");
                 });
             },
@@ -180,7 +183,16 @@ var dongle = new machina.Fsm({
                     self.on("connectReceived", function(){
                         console.log("Starting ppp");
                         var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
-                        resolve(myProcess);
+                        myProcess.stdout.on("data", function(chunkBuffer){
+                            var message = chunkBuffer.toString();
+                            debug("ppp stdout => " + message);
+                            if (message.indexOf("local  IP address") !== -1){
+                                resolve(myProcess);
+                            } 
+                        });
+                        // if the connection is not established after CONNECTION_TIMEOUT reject
+                        setTimeout(function(){reject("Request time out.")}, CONNECTION_TIMEOUT);
+
                     });
                         
                 })
@@ -189,7 +201,7 @@ var dongle = new machina.Fsm({
                     self.transition( "3G_connected" );
                 })
                 .catch(function(err){
-                    console.log(err.msg);
+                    console.log("error in open3G", err);
                     console.log("Could not connect. Cleaning...");
                 });
             },
@@ -223,18 +235,19 @@ var dongle = new machina.Fsm({
                 var self = this;
 
                 new Promise(function(resolve, reject){
-                    var myProcess = spawn("ssh", ["-N", "-R", queenPort + ":localhost:" + antPort, target]);
+                    var myProcess = spawn("ssh", ["-v", "-N", "-R", queenPort + ":localhost:" + antPort, target]);
                     debug("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
-
                     myProcess.stderr.on("data", function(chunkBuffer){
                         var message = chunkBuffer.toString();
-                        debug("=> " + message);
-                        if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
+                        debug("ssh stderr => " + message);
+                        if (message.indexOf("connected to localhost port 9632") !== -1){
+                            resolve(myProcess);
+                        } else if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
                             reject({process: myProcess, msg:"Port already in use."});
                         }
                     });
                     // if no error after SSH_TIMEOUT then validate the connexion
-                    setTimeout(function(){resolve(myProcess)}, SSH_TIMEOUT);
+                    setTimeout(function(){reject({process: myProcess, msg:"SSH timeout"});}, SSH_TIMEOUT);
 
                 })
                 .then(function(process){
@@ -245,14 +258,6 @@ var dongle = new machina.Fsm({
                     console.log(err.msg);
                     console.log("Could not make the tunnel. Cleanning...");
                     self.cleanProcess(err.process);
-                });
-            },
-
-            "closeTunnel": function() {
-
-                return this.cleanProcess(this.sshProcess)
-                .then(function(){
-                    console.log('SSH tunnel closed');
                 });
             }
 
@@ -266,7 +271,7 @@ var dongle = new machina.Fsm({
             "closeTunnel": function() {
                 debug('Closing SSH tunnel');
 
-                cleanProcess(this.sshProcess)
+                this.cleanProcess(this.sshProcess)
                 .then(function(){
                     debug('SSH tunnel closed');
                     self.transition('3G_connected');
@@ -274,9 +279,16 @@ var dongle = new machina.Fsm({
             },
 
             "close3G": function(){
-                this.handle("closeTunnel");
-                this.deferUntilTransition("3G_connected");
-                this.transition('3G_connected');
+                var self = this;
+                self.handle("closeTunnel");
+
+                self.modemPort.write("AT+CGACT=0,1\r");
+                self.modemPort.write("AT+CGATT=0\r");
+
+                self.cleanProcess(self.pppProcess)
+                .then(function(code){
+                    self.transition("initialized");
+                });
             }
 
         }
