@@ -1,18 +1,23 @@
 "use strict";
 
 var quipu = require("./index.js");
+var PIN = require("./myPINcode.js");
 
 // initilize the device
 
 var devices = {
-	modem: "/dev/ttyUSB0",
-	sms: "/dev/ttyUSB2"
+	modem: "/dev/serial/by-id/usb-HUAWEI_HUAWEI_HiLink-if00-port0",
+	sms: "/dev/serial/by-id/usb-HUAWEI_HUAWEI_HiLink-if02-port0"
 };
 
-quipu.handle("initialize", devices);
+quipu.handle("initialize", devices, PIN);
 
 // sending a SMS
-quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
+setTimeout(function(){
+// this seems necessary, because the PIN unlocking takes some time.
+// Without timeout, this message wouldn't be sent
+	quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
+}, 3000);
 
 // receiving SMS
 quipu.on("smsReceived", function(sms){
