@@ -27,6 +27,7 @@ var dongle = new machina.Fsm({
     pppProcess: null,
     sshProcess: null,
     signalStrength: undefined,
+    registrationStatus: undefined,
 
     initialState: "uninitialized",
 
@@ -68,13 +69,15 @@ var dongle = new machina.Fsm({
                     resolve();
                 });
 
-                self.modemPort.on("error", function(){
+                self.modemPort.on("error", function(data){
+                    debug("error event on modemPort", data);
                     reject();
                 });
 
             });
 
-            self.smsPort.on("error", function(){
+            self.smsPort.on("error", function(data){
+                debug("error event on smsPort", data);
                 reject();
             });
         });    
@@ -112,7 +115,16 @@ var dongle = new machina.Fsm({
                     var level = message.match(/:\s(\d+)/)[1];
                     self.signalStrength = parseInt(level);
                 } catch(err){
-                    console.log("error in watchSMS", err);
+                    console.log("error in watchSMS for rssi", err);
+                }
+            }
+            // registration (see http://m2msupport.net/m2msupport/atcreg-network-registration/)
+            if(message.slice(0, 5) === "+CREG"){
+                try {
+                    var level = message.match(/:\s(\d+)/)[1];
+                    self.registrationStatus = parseInt(level);
+                } catch(err){
+                    console.log("error in watchSMS for CREG", err);
                 }
             }
         });
@@ -148,6 +160,7 @@ var dongle = new machina.Fsm({
                 this.smsPort.write("AT+CMEE=2\r"); // more error
                 this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
                 this.smsPort.write("AT+CMGF=1\r"); // text mode for sms
+                this.modemPort.write("AT+CREG=1\r"); //
                 debug('INITIALIZED, listening to SMS');
             },
             "sendSMS": function(message, phone_no) {
@@ -188,10 +201,13 @@ var dongle = new machina.Fsm({
                             debug("ppp stdout => " + message);
                             if (message.indexOf("local  IP address") !== -1){
                                 resolve(myProcess);
-                            } 
+                            } else if (message.indexOf("Modem hangup") !== -1){
+                                debug("Modem hanged up, disconnecting.");
+                                self.cleanProcess(process);
+                            }
                         });
                         // if the connection is not established after CONNECTION_TIMEOUT reject
-                        setTimeout(function(){reject("Request time out.")}, CONNECTION_TIMEOUT);
+                        setTimeout(function(){reject({process: myProcess, msg:"Request time out."})}, CONNECTION_TIMEOUT);
 
                     });
                         
@@ -201,8 +217,9 @@ var dongle = new machina.Fsm({
                     self.transition( "3G_connected" );
                 })
                 .catch(function(err){
-                    console.log("error in open3G", err);
+                    console.log("error in open3G", err.msg);
                     console.log("Could not connect. Cleaning...");
+                    self.cleanProcess(err.process);
                 });
             },
         },
@@ -240,13 +257,13 @@ var dongle = new machina.Fsm({
                     myProcess.stderr.on("data", function(chunkBuffer){
                         var message = chunkBuffer.toString();
                         debug("ssh stderr => " + message);
-                        if (message.indexOf("connected to localhost port 9632") !== -1){
+                        if (message.indexOf("remote forward success") !== -1){
                             resolve(myProcess);
                         } else if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
                             reject({process: myProcess, msg:"Port already in use."});
                         }
                     });
-                    // if no error after SSH_TIMEOUT then validate the connexion
+                    // if no error after SSH_TIMEOUT 
                     setTimeout(function(){reject({process: myProcess, msg:"SSH timeout"});}, SSH_TIMEOUT);
 
                 })
@@ -258,6 +275,7 @@ var dongle = new machina.Fsm({
                     console.log(err.msg);
                     console.log("Could not make the tunnel. Cleanning...");
                     self.cleanProcess(err.process);
+                    self.emit("tunnelError", err.msg);
                 });
             }
 
