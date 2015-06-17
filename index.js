@@ -27,6 +27,7 @@ var dongle = new machina.Fsm({
     pppProcess: null,
     sshProcess: null,
     signalStrength: undefined,
+    PIN: undefined,
 
     initialState: "uninitialized",
 
@@ -80,7 +81,7 @@ var dongle = new machina.Fsm({
         });    
     },
 
-    "sendAT": function(port, command){
+    sendAT: function(port, command){
         if (port.isOpen())
             port.write(command + "\r");
         else
@@ -124,15 +125,16 @@ var dongle = new machina.Fsm({
             "*": function() {
                 this.deferUntilTransition("initialized");
             },
-            "initialize": function(devices, baudrate) {
+            "initialize": function(devices, PIN, baudrate) {
 
                 var self = this;
                 this.smsDevice = devices.sms;
                 this.modemDevice = devices.modem;
+                this.PIN = PIN;
 
                 self.openPorts()
                 .then(function(){
-                    self.transition("initialized");
+                    self.transition("initialized", PIN);
                 })
                 .catch(function(err){
                     console.log("error in initialize", err.msg);
@@ -146,6 +148,9 @@ var dongle = new machina.Fsm({
 
                 this.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
                 this.smsPort.write("AT+CMEE=2\r"); // more error
+                
+                this.smsPort.write("AT+CPIN=" + this.PIN + "\r");
+
                 this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
                 this.smsPort.write("AT+CMGF=1\r"); // text mode for sms
                 debug('INITIALIZED, listening to SMS');
