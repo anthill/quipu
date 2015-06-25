@@ -29,6 +29,8 @@ var dongle = new machina.Fsm({
     signalStrength: undefined,
     registrationStatus: undefined,
     PIN: undefined,
+    smsQueue: [],
+    sendingSMS: false,
 
     initialState: "uninitialized",
 
@@ -91,26 +93,57 @@ var dongle = new machina.Fsm({
             console.log('Port ' + port + ' is not open');
     },
 
-    watchSMS: function(){
+    sendSMS: function(message, phone_no) {
+        // add sms to queue and check if it can be sent
+        this.smsQueue.push({message: message, phone_no: phone_no});
+        if (!this.sendingSMS && this.smsPort.isOpen()) {
+            this.sendingSMS = true;
+            var toSend = this.smsQueue.shift();
+            this._sendSMS(toSend.message, toSend.phone_no);
+        }
+    },
+
+    _sendSMS: function(message, phone_no) {
+        this.smsPort.write("AT+CMGF=1\r");
+        this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
+        this.smsPort.write(message); 
+        this.smsPort.write(Buffer([0x1A]));
+        this.smsPort.write('^z');
+    },
+
+    watchATmsg: function(){
         var self = this;
 
         this.smsPort.on('data', function(data) {
 
             var message = data.toString().trim();
             debug("Raw AT message from sms:\n", data.toString());
-            // sms notifications
+            // sms received notifications
             if(message.slice(0,5) === "+CMTI"){
                 var mesgNum = message.match(/,(\d+)/)[1];
                 debug("received a sms at position ", mesgNum);
+                self.smsPort.write("AT+CMGF=1\r");
                 self.smsPort.write('AT+CPMS="ME"\r');
                 self.smsPort.write('AT+CMGR=' + mesgNum +'\r');
             }
-            // sms content
+            // sms received content
             if(message.slice(0, 5) === "+CMGR"){
+                self.smsPort.write("AT+CMGF=1\r");
                 var parts = message.split(/\r+\n/);
                 var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
                 var body = parts[1]
                 self.emit("smsReceived", {body: body, from: from});
+            }
+            // sms sent
+            if(message.indexOf("+CMGS: ") > -1){
+                debug("Message sent");
+                // try to send next message in queue
+                if (self.smsQueue.length > 0){
+                    var toSend = self.smsQueue.shift();
+                    self._sendSMS(toSend.message, toSend.phone_no);
+                } else {
+                    self.sendingSMS = false;
+                }
             }
             // signal strength
             if(message.slice(0, 5) === "^RSSI"){
@@ -118,7 +151,7 @@ var dongle = new machina.Fsm({
                     var level = message.match(/:\s(\d+)/)[1];
                     self.signalStrength = parseInt(level);
                 } catch(err){
-                    console.log("error in watchSMS for rssi", err);
+                    console.log("error in watchATmsg for rssi", err);
                 }
             }
             // registration (see http://m2msupport.net/m2msupport/atcreg-network-registration/)
@@ -127,7 +160,7 @@ var dongle = new machina.Fsm({
                     var level = message.match(/:\s(\d+)/)[1];
                     self.registrationStatus = parseInt(level);
                 } catch(err){
-                    console.log("error in watchSMS for CREG", err);
+                    console.log("error in watchATmsg for CREG", err);
                 }
             }
         });
@@ -147,36 +180,35 @@ var dongle = new machina.Fsm({
                 this.PIN = PIN;
 
                 self.openPorts()
-                .then(function(){
-                    self.transition("initialized", PIN);
-                })
-                .catch(function(err){
-                    console.log("error in initialize", err.msg);
-                    console.log("Could not open ports");
-                });
+                    .then(function(){
+                        
+                        self.watchATmsg();
+                        self.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
+                        self.smsPort.write("AT+CMEE=2\r"); // more error
+                        
+                        self.smsPort.write("AT+CPIN=" + self.PIN + "\r");
+
+                        self.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
+                        self.smsPort.write("AT+CMGF=1\r"); // text mode for sms
+                        self.modemPort.write("AT+CMGF=1\r"); // text mode for sms
+                        self.modemPort.write("AT+CREG=1\r"); //
+
+                        if (self.smsQueue.length > 0){
+                            var toSend = self.smsQueue.shift();
+                            self._sendSMS(toSend.message, toSend.phone_no);
+                        };
+                        
+                        setTimeout(function(){
+                            self.transition("initialized", PIN);
+                        }, 2000);
+                    })
+                    .catch(function(err){
+                        console.log("error in initialize", err.msg);
+                        console.log("Could not open ports");
+                    });
             },
         },
         "initialized": {
-            _onEnter : function () {
-                this.watchSMS();
-
-                this.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
-                this.smsPort.write("AT+CMEE=2\r"); // more error
-                
-                this.smsPort.write("AT+CPIN=" + this.PIN + "\r");
-
-                this.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
-                this.smsPort.write("AT+CMGF=1\r"); // text mode for sms
-                this.modemPort.write("AT+CREG=1\r"); //
-                debug('INITIALIZED, listening to SMS');
-            },
-            "sendSMS": function(message, phone_no) {
-                this.smsPort.write("AT+CMGF=1\r");
-                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
-                this.smsPort.write(message); 
-                this.smsPort.write(Buffer([0x1A]));
-                this.smsPort.write('^z');
-            },
             "open3G": function() {
 
                 var self = this;
@@ -300,7 +332,13 @@ var dongle = new machina.Fsm({
             _onEnter: function(){
                 debug('TUNNELLING');
             },
-
+            "sendSMS": function(message, phone_no) {
+                this.smsPort.write("AT+CMGF=1\r");
+                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
+                this.smsPort.write(message); 
+                this.smsPort.write(Buffer([0x1A]));
+                this.smsPort.write('^z');
+            },
             "closeTunnel": function() {
                 debug('Closing SSH tunnel');
 

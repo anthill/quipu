@@ -12,33 +12,37 @@ var devices = {
 
 quipu.handle("initialize", devices, PIN);
 
-// sending a SMS
-setTimeout(function(){
-// this seems necessary, because the PIN unlocking takes some time.
-// Without timeout, this message wouldn't be sent
-	quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
-}, 3000);
+quipu.sendSMS("1", "33671358943");
+quipu.sendSMS("2", "33671358943");
+quipu.sendSMS("3", "33671358943");
 
-// receiving SMS
-quipu.on("smsReceived", function(sms){
-	console.log(sms);		
-});
+// // sending a SMS
+// setTimeout(function(){
+// // this seems necessary, because the PIN unlocking takes some time.
+// // Without timeout, this message wouldn't be sent
+// 	quipu.sendSMS("Hello from quipu.", "33671358943");
+// }, 3000);
 
-// spawning a 3G connexion and closing it after 30 seconds
-quipu.handle("open3G");
+// // receiving SMS
+// quipu.on("smsReceived", function(sms){
+// 	console.log(sms);		
+// });
 
-setTimeout(function(){
-	quipu.handle("close3G");
-}, 30000)
+// // spawning a 3G connexion and closing it after 30 seconds
+// quipu.handle("open3G");
 
-
-// open a reverse ssh tunnel towards "kerrigan" (must be set in your ~/.ssh/config)
-quipu.handle("openTunnel", 2222, 9632, "kerrigan");
-
-setTimeout(function(){
-	quipu.handle("closeTunnel");
-}, 30000)
+// setTimeout(function(){
+// 	quipu.handle("close3G");
+// }, 30000)
 
 
+// // open a reverse ssh tunnel towards "kerrigan" (must be set in your ~/.ssh/config)
+// quipu.handle("openTunnel", 2222, 9632, "kerrigan");
 
-module.exports = quipu;
+// setTimeout(function(){
+// 	quipu.handle("closeTunnel");
+// }, 30000)
+
+
+
+// module.exports = quipu;

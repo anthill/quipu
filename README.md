@@ -20,7 +20,7 @@ var devices = {
 quipu.handle("initialize", devices);
 
 // sending a SMS
-quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
+quipu.sendSMS("Hello from quipu.", "33671358943");
 
 // receiving SMS
 quipu.on("smsReceived", function(sms){
