@@ -7,7 +7,9 @@ From [Wikipedia article](http://en.wikipedia.org/wiki/Quipu):
 
 ## Getting started
 
-```
+After creating a file called `myPINcode.js` containing `module.exports = xxxx;` your pin code, you can use the library as follows: 
+
+```js
 var quipu = require("./index.js");
 
 // initilize the device
@@ -20,7 +22,7 @@ var devices = {
 quipu.handle("initialize", devices);
 
 // sending a SMS
-quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
+quipu.sendSMS("Hello from quipu.", "33671358943");
 
 // receiving SMS
 quipu.on("smsReceived", function(sms){
@@ -44,6 +46,9 @@ setTimeout(function(){
 
 ```
 
+Behind the scene, there is a final state machine (FSM) with the following states:
+
+![States of quipu](https://docs.google.com/drawings/d/103BZlfPiCt5CTqBepyA6QTmN5B-ivCOfwhd735zRj5Y/pub?w=960&h=720)
 
 
 ### References

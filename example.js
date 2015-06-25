@@ -12,19 +12,22 @@ var devices = {
 
 quipu.handle("initialize", devices, PIN);
 
-// sending a SMS
-setTimeout(function(){
-// this seems necessary, because the PIN unlocking takes some time.
-// Without timeout, this message wouldn't be sent
-	quipu.handle("sendSMS", "Hello from quipu.", "33671358943");
-}, 3000);
+quipu.on("transition", function (data){
+    console.log("Transitioned from " + data.fromState + " to " + data.toState);
+});
+
+// send sms
+quipu.sendSMS("1", "33671358943");
+quipu.sendSMS("2", "33671358943");
+quipu.sendSMS("3", "33671358943");
+
 
 // receiving SMS
 quipu.on("smsReceived", function(sms){
 	console.log(sms);		
 });
 
-// spawning a 3G connexion and closing it after 30 seconds
+spawning a 3G connexion and closing it after 30 seconds
 quipu.handle("open3G");
 
 setTimeout(function(){
