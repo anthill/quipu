@@ -30,6 +30,7 @@ var dongle = new machina.Fsm({
     PIN: undefined,
     smsQueue: [],
     sendingSMS: false,
+    modemInitializedOnce: false,
 
     initialState: "uninitialized",
 
@@ -47,7 +48,7 @@ var dongle = new machina.Fsm({
         });
     },
 
-    openPorts: function(baudrate){
+    openSmsPort: function(baudrate){
 
         var self = this;
 
@@ -59,23 +60,8 @@ var dongle = new machina.Fsm({
             });
 
             self.smsPort.on("open", function() {
-                debug('SMS port opened');
-
-                // open modem Port
-                self.modemPort = new SerialPort(self.modemDevice, {
-                    baudrate: baudrate ? baudrate : 9600 
-                });
-
-                self.modemPort.on("open", function(){
-                    debug('Modem port opened');
-                    resolve();
-                });
-
-                self.modemPort.on("error", function(data){
-                    debug("error event on modemPort", data);
-                    reject();
-                });
-
+                debug('SMS port opened');                
+                resolve()
             });
 
             self.smsPort.on("error", function(data){
@@ -83,6 +69,28 @@ var dongle = new machina.Fsm({
                 reject();
             });
         });    
+    },
+
+    openModemPort: function(baudrate){
+
+        var self = this;
+
+        return new Promise(function(resolve, reject){
+
+            self.modemPort = new SerialPort(self.modemDevice, {
+                baudrate: baudrate ? baudrate : 9600 
+            });
+
+            self.modemPort.on("open", function(){
+                debug('Modem port opened');
+                resolve();
+            });
+
+            self.modemPort.on("error", function(data){
+                debug("error event on modemPort", data);
+                reject();
+            });
+        }); 
     },
 
     sendAT: function(port, command){
@@ -110,7 +118,7 @@ var dongle = new machina.Fsm({
         this.smsPort.write('^z');
     },
 
-    watchATmsg: function(){
+    watchATonSms: function(){
         var self = this;
 
         self.smsPort.on('data', function(data) {
@@ -163,6 +171,10 @@ var dongle = new machina.Fsm({
                 }
             }
         });
+    },
+
+    watchATonModem: function(){
+        var self = this;
 
         // listening for the modem CONNECT message that should trigger ppp
         self.modemPort.on('data', function(data) {
@@ -174,40 +186,43 @@ var dongle = new machina.Fsm({
             }
         });
 
-        // listening for the modem ready trigger
-        self.on("connectReceived", function(){
-            var resolved = false;
-            console.log("Starting ppp");
-            var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
-            myProcess.stdout.on("data", function(chunkBuffer){
-                var message = chunkBuffer.toString();
-                console.log("ppp stdout => " + message);
-                if (message.indexOf("local  IP address") > -1){
-                    console.log("resolving");
-                    resolved = true;
-                    self.emit("pppConnected", myProcess);
-                } else if (message.indexOf("Modem hangup") > -1){
-                    debug("Modem hanged up, disconnecting.");
-                    self.emit("pppError", {process: myProcess, msg:"Modem hanged up, disconnecting."});
-                }
+        if (!self.modemInitializedOnce) {
+            self.modemInitializedOnce = true;
+
+            // listening for the modem ready trigger
+            self.on("connectReceived", function(){
+                var resolved = false;
+                console.log("Starting ppp");
+                var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
+                myProcess.stdout.on("data", function(chunkBuffer){
+                    var message = chunkBuffer.toString();
+                    debug("ppp stdout => " + message);
+                    if (message.indexOf("local  IP address") > -1){
+                        resolved = true;
+                        self.emit("pppConnected", myProcess);
+                    } else if (message.indexOf("Modem hangup") > -1){
+                        debug("Modem hanged up, disconnecting.");
+                        self.emit("pppError", {process: myProcess, msg:"Modem hanged up, disconnecting."});
+                    }
+                });
+                // if the connection is not established after CONNECTION_TIMEOUT reject
+                setTimeout(function(){
+                    if (!resolved)
+                        self.emit("pppError", {process: myProcess, msg:"Request time out."})
+                }, CONNECTION_TIMEOUT);
             });
-            // if the connection is not established after CONNECTION_TIMEOUT reject
-            setTimeout(function(){
-                if (!resolved)
-                    self.emit("pppError", {process: myProcess, msg:"Request time out."})
-            }, CONNECTION_TIMEOUT);
-        });
 
-        self.on("pppConnected", function(myProcess){
-            console.log("received pppConnected");
-            self.pppProcess = myProcess;
-            self.transition("3G_connected");
-        })
+            self.on("pppConnected", function(myProcess){
+                debug("received pppConnected");
+                self.pppProcess = myProcess;
+                self.transition("3G_connected");
+            });
 
-        self.on("pppError", function(msg){
-            console.log("received pppError");
-            self.cleanProcess(msg.process);
-        })
+            self.on("pppError", function(msg){
+                debug("received pppError");
+                self.cleanProcess(msg.process);
+            });
+        }
     },
 
 
@@ -219,14 +234,14 @@ var dongle = new machina.Fsm({
             "initialize": function(devices, PIN, baudrate) {
 
                 var self = this;
-                this.smsDevice = devices.sms;
-                this.modemDevice = devices.modem;
-                this.PIN = PIN;
+                self.smsDevice = devices.sms;
+                self.modemDevice = devices.modem;
+                self.PIN = PIN;
 
-                self.openPorts()
+                self.openSmsPort()
                     .then(function(){
-                        
-                        self.watchATmsg();
+
+                        self.watchATonSms();
                         self.smsPort.write("ATE1\r"); // echo mode makes easier to parse responses
                         self.smsPort.write("AT+CMEE=2\r"); // more error
                         
@@ -234,8 +249,8 @@ var dongle = new machina.Fsm({
 
                         self.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
                         self.smsPort.write("AT+CMGF=1\r"); // text mode for sms
-                        self.modemPort.write("AT+CMGF=1\r"); // text mode for sms
-                        self.modemPort.write("AT+CREG=1\r"); //
+                        // self.modemPort.write("AT+CMGF=1\r"); // text mode for sms
+                        // self.modemPort.write("AT+CREG=1\r"); //
 
                         if (self.smsQueue.length > 0){
                             var toSend = self.smsQueue.shift();
@@ -247,8 +262,8 @@ var dongle = new machina.Fsm({
                         }, 2000);
                     })
                     .catch(function(err){
-                        console.log("error in initialize", err.msg);
-                        console.log("Could not open ports");
+                        console.log("error in initialize", err);
+                        console.log("Could not open sms port");
                     });
             },
         },
@@ -257,22 +272,20 @@ var dongle = new machina.Fsm({
 
                 var self = this;
 
-                debug('modem device', self.modemDevice);
-                debug('modemPort status', self.modemPort.isOpen())
+                self.openModemPort()
+                    .then(function(){
 
-                // if (self.modemPort.isOpen() === false)
-                //     self.modemPort.open();
-
-                // wait a bit for the modem to be opened
-                setTimeout(function(){
-                    console.log("enteing", self.modemPort.isOpen());
-                    self.modemPort.write('ATH\r');
-                    self.modemPort.write("ATE1\r");
-                    self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
-                    self.modemPort.write("ATD*99#\r");
-                    console.log("out", self.modemPort.isOpen())
-                }, 2000);
-            },
+                        self.watchATonModem();                            
+                        self.modemPort.write('ATH\r');
+                        self.modemPort.write("ATE1\r");
+                        self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
+                        self.modemPort.write("ATD*99#\r");
+                    })
+                    .catch(function(err){
+                        console.log("error in initialize", err.msg);
+                        console.log("Could not open modem port");
+                    });
+            }
         },
 
         "3G_connected": {
