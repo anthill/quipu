@@ -12,9 +12,8 @@ var DEBUG = process.env.DEBUG ? process.env.DEBUG : false;
 
 var debug = function() {
     if (DEBUG) {
-        console.log("DEBUG from quipu:");
+        [].unshift.call(arguments, "[DEBUG quipu] ");
         console.log.apply(console, arguments);
-        console.log("==================");
     };
 }
 
@@ -114,7 +113,7 @@ var dongle = new machina.Fsm({
     watchATmsg: function(){
         var self = this;
 
-        this.smsPort.on('data', function(data) {
+        self.smsPort.on('data', function(data) {
 
             var message = data.toString().trim();
             debug("Raw AT message from sms:\n", data.toString());
@@ -164,6 +163,51 @@ var dongle = new machina.Fsm({
                 }
             }
         });
+
+        // listening for the modem CONNECT message that should trigger ppp
+        self.modemPort.on('data', function(data) {
+            var message = data.toString().trim();
+            debug("Raw AT message from modem:\n", data.toString());
+        
+            if(message.indexOf("CONNECT") > -1){
+                self.emit("connectReceived");
+            }
+        });
+
+        // listening for the modem ready trigger
+        self.on("connectReceived", function(){
+            var resolved = false;
+            console.log("Starting ppp");
+            var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
+            myProcess.stdout.on("data", function(chunkBuffer){
+                var message = chunkBuffer.toString();
+                console.log("ppp stdout => " + message);
+                if (message.indexOf("local  IP address") > -1){
+                    console.log("resolving");
+                    resolved = true;
+                    self.emit("pppConnected", myProcess);
+                } else if (message.indexOf("Modem hangup") > -1){
+                    debug("Modem hanged up, disconnecting.");
+                    self.emit("pppError", {process: myProcess, msg:"Modem hanged up, disconnecting."});
+                }
+            });
+            // if the connection is not established after CONNECTION_TIMEOUT reject
+            setTimeout(function(){
+                if (!resolved)
+                    self.emit("pppError", {process: myProcess, msg:"Request time out."})
+            }, CONNECTION_TIMEOUT);
+        });
+
+        self.on("pppConnected", function(myProcess){
+            console.log("received pppConnected");
+            self.pppProcess = myProcess;
+            self.transition("3G_connected");
+        })
+
+        self.on("pppError", function(msg){
+            console.log("received pppError");
+            self.cleanProcess(msg.process);
+        })
     },
 
 
@@ -213,74 +257,27 @@ var dongle = new machina.Fsm({
 
                 var self = this;
 
-                return new Promise(function(resolve, reject){
+                debug('modem device', self.modemDevice);
+                debug('modemPort status', self.modemPort.isOpen())
 
-                    debug('modem device', self.modemDevice);
-                    debug('modemPort status', self.modemPort.isOpen())
+                // if (self.modemPort.isOpen() === false)
+                //     self.modemPort.open();
 
-                    if (self.modemPort.isOpen() === false)
-                        self.modemPort.open();
-
-                    setTimeout(function(){
-                        console.log("waiting");
-
-                        self.modemPort.on('data', function(data) {
-
-                            var message = data.toString().trim();
-                            debug("Raw AT message from modem:\n", data.toString());
-                        
-                            if(message.indexOf("CONNECT") > -1){
-                                self.emit("connectReceived");
-                            }
-                        });
-
-                        self.modemPort.write('ATH\r');
-                        self.modemPort.write("ATE1\r");
-                        self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
-                        self.modemPort.write("ATD*99#\r");
-
-                        self.on("connectReceived", function(){
-                            console.log("Starting ppp");
-                            var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
-                            myProcess.stdout.on("data", function(chunkBuffer){
-                                var message = chunkBuffer.toString();
-                                debug("ppp stdout => " + message);
-                                if (message.indexOf("local  IP address") !== -1){
-                                    resolve(myProcess);
-                                } else if (message.indexOf("Modem hangup") !== -1){
-                                    debug("Modem hanged up, disconnecting.");
-                                    self.cleanProcess(process);
-                                }
-                            });
-                            // if the connection is not established after CONNECTION_TIMEOUT reject
-                            setTimeout(function(){reject({process: myProcess, msg:"Request time out."})}, CONNECTION_TIMEOUT);
-
-                        });
-                    }, 2000);
-                        
-                })
-                .then(function(process){
-                    self.pppProcess = process;
-                    self.transition( "3G_connected" );
-                })
-                .catch(function(err){
-                    console.log("error in open3G", err);
-                    console.log("Could not connect. Cleaning...");
-                    self.cleanProcess(err.process);
-                });
+                // wait a bit for the modem to be opened
+                setTimeout(function(){
+                    console.log("enteing", self.modemPort.isOpen());
+                    self.modemPort.write('ATH\r');
+                    self.modemPort.write("ATE1\r");
+                    self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
+                    self.modemPort.write("ATD*99#\r");
+                    console.log("out", self.modemPort.isOpen())
+                }, 2000);
             },
         },
 
         "3G_connected": {
             _onEnter : function () {
                 console.log('3G CONNECTED');
-            },
-            "sendSMS": function(message, phone_no) {
-                this.smsPort.write("AT+CMGF=1\r");
-                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
-                this.smsPort.write(message); 
-                this.smsPort.write(Buffer([0x1A]));
-                this.smsPort.write('^z');
             },
             "close3G": function() {
                 var self = this;
@@ -289,9 +286,9 @@ var dongle = new machina.Fsm({
                 self.modemPort.write("AT+CGATT=0\r");
 
                 self.cleanProcess(self.pppProcess)
-                .then(function(code){
-                    self.transition("initialized");
-                });
+                    .then(function(code){
+                        self.transition("initialized");
+                    });
             },
 
             "openTunnel": function(queenPort, antPort, target) {
@@ -331,13 +328,6 @@ var dongle = new machina.Fsm({
         "tunnelling": {
             _onEnter: function(){
                 debug('TUNNELLING');
-            },
-            "sendSMS": function(message, phone_no) {
-                this.smsPort.write("AT+CMGF=1\r");
-                this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
-                this.smsPort.write(message); 
-                this.smsPort.write(Buffer([0x1A]));
-                this.smsPort.write('^z');
             },
             "closeTunnel": function() {
                 debug('Closing SSH tunnel');
