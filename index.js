@@ -268,6 +268,9 @@ var dongle = new machina.Fsm({
             },
         },
         "initialized": {
+            _onEnter: function(){
+                debug('INITIALIZED');
+            },
             "open3G": function() {
 
                 var self = this;
@@ -346,23 +349,23 @@ var dongle = new machina.Fsm({
                 debug('Closing SSH tunnel');
 
                 this.cleanProcess(this.sshProcess)
-                .then(function(){
-                    debug('SSH tunnel closed');
-                    self.transition('3G_connected');
-                });
+                debug('SSH tunnel closed');
+                this.transition('3G_connected');
             },
 
             "close3G": function(){
                 var self = this;
-                self.handle("closeTunnel");
+                debug('Closing SSH tunnel');
+
+                this.cleanProcess(this.sshProcess)
+                debug('SSH tunnel closed');
 
                 self.modemPort.write("AT+CGACT=0,1\r");
                 self.modemPort.write("AT+CGATT=0\r");
 
                 self.cleanProcess(self.pppProcess)
-                .then(function(code){
-                    self.transition("initialized");
-                });
+                // the killing of ssh doesn't emit exit 
+                self.transition("initialized");
             }
 
         }

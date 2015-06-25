@@ -12,6 +12,11 @@ var devices = {
 
 quipu.handle("initialize", devices, PIN);
 
+quipu.on("transition", function (data){
+    console.log("Transitioned from " + data.fromState + " to " + data.toState);
+});
+
+// send sms
 quipu.sendSMS("1", "33671358943");
 quipu.sendSMS("2", "33671358943");
 quipu.sendSMS("3", "33671358943");
@@ -30,16 +35,12 @@ setTimeout(function(){
 }, 30000)
 
 
-quipu.on("transition", function (data){
-    console.log("************* we just transitioned from " + data.fromState + " to " + data.toState);
-});
+// open a reverse ssh tunnel towards "kerrigan" (must be set in your ~/.ssh/config)
+quipu.handle("openTunnel", 2222, 9632, "kerrigan");
 
-// // open a reverse ssh tunnel towards "kerrigan" (must be set in your ~/.ssh/config)
-// quipu.handle("openTunnel", 2222, 9632, "kerrigan");
-
-// setTimeout(function(){
-// 	quipu.handle("closeTunnel");
-// }, 30000)
+setTimeout(function(){
+	quipu.handle("closeTunnel");
+}, 30000)
 
 
 
