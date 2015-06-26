@@ -13,7 +13,7 @@ After creating a file called `myPINcode.js` containing `module.exports = xxxx;` 
 var quipu = require("./index.js");
 
 // initilize the device
-
+var yourNumber = "336........";
 var devices = {
     modem: "/dev/ttyUSB0",
     sms: "/dev/ttyUSB2"
@@ -22,7 +22,7 @@ var devices = {
 quipu.handle("initialize", devices);
 
 // sending a SMS
-quipu.sendSMS("Hello from quipu.", "33671358943");
+quipu.sendSMS("Hello from quipu.", yourNumber);
 
 // receiving SMS
 quipu.on("smsReceived", function(sms){
@@ -50,6 +50,29 @@ Behind the scene, there is a final state machine (FSM) with the following states
 
 ![States of quipu](https://docs.google.com/drawings/d/103BZlfPiCt5CTqBepyA6QTmN5B-ivCOfwhd735zRj5Y/pub?w=960&h=720)
 
+## Compressing messages
+
+160 characters is not a lot and you have useful characters like curly braces that ar not well handeled by sms protocol. So `parser.js` provides and `encode` and `decode` functions that can help you **pass json objects through the air**:
+
+```
+// to send encoded, as sms don't like curly braces and other stuff
+var parser = require("./parser.js")
+
+parser.encode(devices)
+    .then(function(msg){
+        quipu.sendSMS(msg, yourNumber);
+    })
+    .catch(function(err){
+        console.log(err);
+    });
+// and to decode use 
+quipu.on("smsReceived", function(sms){
+    parser.decode(sms.body)
+        .then(function(object){
+            console.log(object);
+        })      
+});
+```
 
 ### References
 
