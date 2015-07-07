@@ -138,7 +138,11 @@ var dongle = new machina.Fsm({
                 self.smsPort.write("AT+CMGF=1\r");
                 var parts = message.split(/\r+\n/);
                 var from = parts[0].split(",")[1].replace(new RegExp('"', "g"), "");
-                var body = parts[1]
+                var body = parts[1];
+                setTimeout(function(){
+                    self.smsPort.write("AT+CMGD=0,2\r");
+                }, 5000)
+                
                 self.emit("smsReceived", {body: body, from: from});
             }
             // sms sent
@@ -151,6 +155,11 @@ var dongle = new machina.Fsm({
                 } else {
                     self.sendingSMS = false;
                 }
+            }
+            // memory full
+            if(message.indexOf("SMMEMFULL") > -1){
+                debug("Memory full");
+                self.smsPort.write("AT+CMGD=0,4\r");
             }
             // signal strength
             if(message.slice(0, 5) === "^RSSI"){
@@ -249,6 +258,7 @@ var dongle = new machina.Fsm({
 
                         self.smsPort.write("AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
                         self.smsPort.write("AT+CMGF=1\r"); // text mode for sms
+                        self.smsPort.write("AT+CMGD=0,4\r");
                         // self.modemPort.write("AT+CMGF=1\r"); // text mode for sms
                         // self.modemPort.write("AT+CREG=1\r"); //
 

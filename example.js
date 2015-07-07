@@ -14,11 +14,12 @@ quipu.handle("initialize", devices, PIN);
 
 quipu.on("transition", function (data){
     console.log("Transitioned from " + data.fromState + " to " + data.toState);
+
+    // send normal sms sms
+    quipu.sendSMS("1", "33671358943");
+	quipu.sendSMS("2", "33671358943");
 });
 
-// send normal sms sms
-quipu.sendSMS("1", "33671358943");
-quipu.sendSMS("2", "33671358943");
 
 // receiving normal SMS
 quipu.on("smsReceived", function(sms){
@@ -44,8 +45,7 @@ quipu.on("smsReceived", function(sms){
 });
 
 
-
-spawning a 3G connexion and closing it after 30 seconds
+// spawning a 3G connexion and closing it after 30 seconds
 quipu.handle("open3G");
 
 setTimeout(function(){
