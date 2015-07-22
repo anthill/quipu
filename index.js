@@ -184,7 +184,7 @@ var dongle = new machina.Fsm({
 
     watchATonModem: function(){
         var self = this;
-
+        var connected = false;
         // listening for the modem CONNECT message that should trigger ppp
         self.modemPort.on('data', function(data) {
             var message = data.toString().trim();
@@ -201,6 +201,7 @@ var dongle = new machina.Fsm({
             // listening for the modem ready trigger
             self.on("connectReceived", function(){
                 var resolved = false;
+                connected = true;
                 console.log("Starting ppp");
                 var myProcess = spawn("pppd", [ "debug", "-detach", "defaultroute", self.modemDevice, "38400"]);
                 myProcess.stdout.on("data", function(chunkBuffer){
@@ -229,8 +230,15 @@ var dongle = new machina.Fsm({
 
             self.on("pppError", function(msg){
                 debug("received pppError");
-                self.cleanProcess(msg.process);
+                self.cleanProcess(msg.process)
+                    .then(function() {self.emit("3G_error")});
             });
+
+            setTimeout(function(){
+                if (!connected)
+                    self.emit("3G_error");
+                }, CONNECTION_TIMEOUT);
+
         }
     },
 
