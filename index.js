@@ -314,7 +314,7 @@ var dongle = new machina.Fsm({
                         self.watchATonModem();                            
                         self.modemPort.write('ATH\r');
                         self.modemPort.write("ATE1\r");
-                        self.modemPort.write('AT+CGDCONT=1,"IP",' + apn ? apn : "free" + '\r');
+                        self.modemPort.write('AT+CGDCONT=1,"IP","' + (apn ? apn : 'free') + '"\r');
                         self.modemPort.write("ATD*99#\r");
                     })
                     .catch(function(err){
