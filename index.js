@@ -354,6 +354,7 @@ var dongle = new machina.Fsm({
                             resolve(myProcess);
                         } else if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
                             reject({process: myProcess, msg:"Port already in use."});
+                            self.emit("3G_error");
                         }
                     });
                     // if no error after SSH_TIMEOUT 
