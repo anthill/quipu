@@ -31,8 +31,18 @@ var dongle = new machina.Fsm({
     smsQueue: [],
     sendingSMS: false,
     modemInitializedOnce: false,
+    networkType: 0,
 
     initialState: "uninitialized",
+
+    getNetworkType: function() {
+        return dongle.networkType;
+    },
+
+    askNetworkType: function() {
+        debug("asking for the network type");
+        this.smsPort.write("AT^SYSINFO\r");
+    },
 
     cleanProcess: function(process){
 
@@ -179,6 +189,11 @@ var dongle = new machina.Fsm({
                     console.log("error in watchATmsg for CREG", err);
                 }
             }
+            // network type (EDGE, 3G, 3G+)
+            if (message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)) {
+                dongle.networkType = parseInt(message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)[1]);
+                debug("networkType : " + dongle.networkType);
+            }
         });
     },
 
@@ -289,7 +304,7 @@ var dongle = new machina.Fsm({
             _onEnter: function(){
                 debug('INITIALIZED');
             },
-            "open3G": function() {
+            "open3G": function(apn) {
 
                 var self = this;
 
@@ -299,7 +314,7 @@ var dongle = new machina.Fsm({
                         self.watchATonModem();                            
                         self.modemPort.write('ATH\r');
                         self.modemPort.write("ATE1\r");
-                        self.modemPort.write('AT+CGDCONT=1,"IP","free"\r');
+                        self.modemPort.write('AT+CGDCONT=1,"IP","' + (apn ? apn : 'free') + '"\r');
                         self.modemPort.write("ATD*99#\r");
                     })
                     .catch(function(err){
@@ -339,6 +354,7 @@ var dongle = new machina.Fsm({
                             resolve(myProcess);
                         } else if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
                             reject({process: myProcess, msg:"Port already in use."});
+                            self.emit("3G_error");
                         }
                     });
                     // if no error after SSH_TIMEOUT 
