@@ -7,14 +7,13 @@ var Promise = require('es6-promise').Promise;
 
 var CONNECTION_TIMEOUT = 20 * 1000;
 var SSH_TIMEOUT = 10 * 1000;
-var QUERY_TIMOUT = 10 * 1000;
 var DEBUG = process.env.DEBUG ? process.env.DEBUG : false;
 
 var debug = function() {
     if (DEBUG) {
         [].unshift.call(arguments, "[DEBUG quipu] ");
         console.log.apply(console, arguments);
-    };
+    }
 }
 
 var dongle = new machina.Fsm({
@@ -48,7 +47,7 @@ var dongle = new machina.Fsm({
 
         debug('Stopping process...');
 
-        return new Promise(function(resolve, reject){
+        return new Promise(function(resolve){
             debug('killing process id', process.pid);
             process.kill();
             process.on('exit', function(code){
@@ -124,7 +123,7 @@ var dongle = new machina.Fsm({
         this.smsPort.write("AT+CMGF=1\r");
         this.smsPort.write('AT+CMGS="' + phone_no + '"\r');
         this.smsPort.write(message); 
-        this.smsPort.write(Buffer([0x1A]));
+        this.smsPort.write(new Buffer([0x1A]));
         this.smsPort.write('^z');
     },
 
@@ -136,7 +135,7 @@ var dongle = new machina.Fsm({
             var message = data.toString().trim();
             debug("Raw AT message from sms:\n", data.toString());
             // sms received notifications
-            if(message.slice(0,5) === "+CMTI"){
+            if(message.slice(0, 5) === "+CMTI"){
                 var mesgNum = message.match(/,(\d+)/)[1];
                 debug("received a sms at position ", mesgNum);
                 self.smsPort.write("AT+CMGF=1\r");
@@ -174,8 +173,8 @@ var dongle = new machina.Fsm({
             // signal strength
             if(message.slice(0, 5) === "^RSSI"){
                 try {
-                    var level = message.match(/:\s(\d+)/)[1];
-                    self.signalStrength = parseInt(level);
+                    var levelRSSI = message.match(/:\s(\d+)/)[1];
+                    self.signalStrength = parseInt(levelRSSI);
                 } catch(err){
                     console.log("error in watchATmsg for rssi", err);
                 }
@@ -183,8 +182,8 @@ var dongle = new machina.Fsm({
             // registration (see http://m2msupport.net/m2msupport/atcreg-network-registration/)
             if(message.slice(0, 5) === "+CREG"){
                 try {
-                    var level = message.match(/:\s(\d+)/)[1];
-                    self.registrationStatus = parseInt(level);
+                    var levelCREG = message.match(/:\s(\d+)/)[1];
+                    self.registrationStatus = parseInt(levelCREG);
                 } catch(err){
                     console.log("error in watchATmsg for CREG", err);
                 }
@@ -263,7 +262,7 @@ var dongle = new machina.Fsm({
             "*": function() {
                 this.deferUntilTransition("initialized");
             },
-            "initialize": function(devices, PIN, baudrate) {
+            "initialize": function(devices, PIN/*, baudrate*/) {
 
                 var self = this;
                 self.smsDevice = devices.sms;
@@ -288,7 +287,7 @@ var dongle = new machina.Fsm({
                         if (self.smsQueue.length > 0){
                             var toSend = self.smsQueue.shift();
                             self._sendSMS(toSend.message, toSend.phone_no);
-                        };
+                        }
                         
                         setTimeout(function(){
                             self.transition("initialized", PIN);
@@ -298,7 +297,7 @@ var dongle = new machina.Fsm({
                         console.log("error in initialize", err);
                         console.log("Could not open sms port");
                     });
-            },
+            }
         },
         "initialized": {
             _onEnter: function(){
@@ -335,7 +334,7 @@ var dongle = new machina.Fsm({
                 self.modemPort.write("AT+CGATT=0\r");
 
                 self.cleanProcess(self.pppProcess)
-                    .then(function(code){
+                    .then(function(){
                         self.transition("initialized");
                     });
             },
@@ -358,7 +357,7 @@ var dongle = new machina.Fsm({
                         }
                     });
                     // if no error after SSH_TIMEOUT 
-                    setTimeout(function(){reject({process: myProcess, msg:"SSH timeout"});}, SSH_TIMEOUT);
+                    setTimeout(function(){reject({process: myProcess, msg:"SSH timeout"}); }, SSH_TIMEOUT);
 
                 })
                 .then(function(process){
