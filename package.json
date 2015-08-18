@@ -8,7 +8,7 @@
         "lint": "eslint ./",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
-    "author": "ants",
+    "author": "ants <contact@ants.builders> (http://ants.builders)",
     "license": "MIT",
     "dependencies": {
         "es6-promise": "^2.0.1",
