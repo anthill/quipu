@@ -1,9 +1,11 @@
 {
   "name": "quipu",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "",
   "main": "index.js",
   "scripts": {
+    "postinstall": "cp ./git-hooks/pre-commit ./.git/hooks/pre-commit; chmod a+x ./.git/hooks/pre-commit",
+    "lint": "eslint ./",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "ants",
@@ -12,5 +14,8 @@
     "es6-promise": "^2.0.1",
     "serialport": "^1.6.3",
     "machina": "^0.4.0"
+  },
+  "devDependencies":{
+    "eslint": "^0.21.0"
   }
 }
