@@ -1,21 +1,21 @@
 {
-    "name": "quipu",
-    "version": "0.1.5",
-    "description": "",
-    "main": "index.js",
-    "scripts": {
-        "postinstall": "if [ -d .git ]; then cp ./git-hooks/pre-commit ./.git/hooks/pre-commit; chmod a+x ./.git/hooks/pre-commit; fi",
-        "lint": "eslint ./",
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "author": "ants <contact@ants.builders> (http://ants.builders)",
-    "license": "MIT",
-    "dependencies": {
-        "es6-promise": "^2.0.1",
-        "serialport": "^1.6.3",
-        "machina": "^0.4.0"
-    },
-    "devDependencies":{
-        "eslint": "^0.21.0"
-    }
+  "name": "quipu",
+  "version": "0.1.7",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "if [ -d .git ]; then cp ./git-hooks/pre-commit ./.git/hooks/pre-commit; chmod a+x ./.git/hooks/pre-commit; fi",
+    "lint": "eslint ./",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ants <contact@ants.builders> (http://ants.builders)",
+  "license": "MIT",
+  "dependencies": {
+    "es6-promise": "^2.0.1",
+    "serialport": "^1.6.3",
+    "machina": "^0.4.0"
+  },
+  "devDependencies":{
+    "eslint": "^0.21.0"
+  }
 }
