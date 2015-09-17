@@ -19,7 +19,7 @@ var debug = function() {
     if (DEBUG) {
         [].unshift.call(arguments, "[DEBUG quipu] ");
         console.log.apply(console, arguments);
-    };
+    }
 }
 
 var dongle = new machina.Fsm({
@@ -54,7 +54,7 @@ var dongle = new machina.Fsm({
 
         debug('Stopping process...');
 
-        return new Promise(function(resolve, reject){
+        return new Promise(function(resolve){
             debug('killing process id', process.pid);
             process.kill();
             process.on('exit', function(code){
@@ -184,7 +184,7 @@ var dongle = new machina.Fsm({
             if (self.smsPort !== self.modemPort)
                 debug("Raw AT message from sms:\n", data.toString());
             // sms received notifications
-            if(message.slice(0,5) === "+CMTI"){
+            if(message.slice(0, 5) === "+CMTI"){
                 var mesgNum = message.match(/,(\d+)/)[1];
                 debug("received a sms at position ", mesgNum);
                 self.sendAT(self.smsPort, "AT+CMGF=1\r");
@@ -222,8 +222,8 @@ var dongle = new machina.Fsm({
             // signal strength
             if(message.slice(0, 5) === "^RSSI"){
                 try {
-                    var level = message.match(/:\s(\d+)/)[1];
-                    self.signalStrength = parseInt(level);
+                    var levelRSSI = message.match(/:\s(\d+)/)[1];
+                    self.signalStrength = parseInt(levelRSSI);
                 } catch(err){
                     console.log("error in watchATmsg for rssi", err);
                 }
@@ -231,8 +231,8 @@ var dongle = new machina.Fsm({
             // registration (see http://m2msupport.net/m2msupport/atcreg-network-registration/)
             if(message.slice(0, 5) === "+CREG"){
                 try {
-                    var level = message.match(/:\s(\d+)/)[1];
-                    self.registrationStatus = parseInt(level);
+                    var levelCREG = message.match(/:\s(\d+)/)[1];
+                    self.registrationStatus = parseInt(levelCREG);
                 } catch(err){
                     console.log("error in watchATmsg for CREG", err);
                 }
@@ -318,7 +318,7 @@ var dongle = new machina.Fsm({
             "*": function() {
                 this.deferUntilTransition("initialized");
             },
-            "initialize": function(devices, PIN, baudrate) {
+            "initialize": function(devices, PIN/*, baudrate*/) {
 
                 var self = this;
 
@@ -464,11 +464,11 @@ var dongle = new machina.Fsm({
                             resolve(myProcess);
                         } else if (message.indexOf("Warning: remote port forwarding failed for listen port") !== -1){
                             reject({process: myProcess, msg:"Port already in use."});
-                            self.emit("3G_error");
+                            self.emit("tunnelError");
                         }
                     });
                     // if no error after SSH_TIMEOUT 
-                    setTimeout(function(){reject({process: myProcess, msg:"SSH timeout"});}, SSH_TIMEOUT);
+                    setTimeout(function(){reject({process: myProcess, msg:"SSH timeout"}); }, SSH_TIMEOUT);
 
                 })
                 .then(function(process){
