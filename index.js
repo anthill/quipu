@@ -8,7 +8,6 @@ var Promise = require('es6-promise').Promise;
 
 var CONNECTION_TIMEOUT = 20 * 1000;
 var SSH_TIMEOUT = 20 * 1000;
-var QUERY_TIMOUT = 10 * 1000;
 var DEBUG = process.env.DEBUG ? process.env.DEBUG : false;
 var SIM908_SCRIPT = './sim908.sh';
 
@@ -171,7 +170,7 @@ var dongle = new machina.Fsm({
         this.sendAT(this.smsPort, "AT+CMGF=1\r");
         this.sendAT(this.smsPort, 'AT+CMGS="' + phone_no + '"\r');
         this.sendAT(this.smsPort, message);
-        this.sendAT(this.smsPort, Buffer([0x1A]));
+        this.sendAT(this.smsPort, new Buffer([0x1A]));
         this.sendAT(this.smsPort, '^z');
     },
 
@@ -322,69 +321,60 @@ var dongle = new machina.Fsm({
 
                 var self = this;
 
-                new Promise(function (resolve, reject) {
-                    if (devices === 'SIM908') {
-                        self.smsDevice = '/dev/ttyS2';
-                        self.modemDevice = '/dev/ttyS2';
-                        self.smsPort = undefined;
-                        self.modemPort = undefined;
-                        self.device = "SIM908";
-                        resolve();
-                    }
-                    else {
-                        self.smsDevice = devices.sms;
-                        self.modemDevice = devices.modem;
-                        self.device = "HUAWEI";
-                        resolve();
-                    }
-                })
-                .then(function () {
+                if (devices === 'SIM908') {
+                    self.smsDevice = '/dev/ttyS2';
+                    self.modemDevice = '/dev/ttyS2';
+                    self.smsPort = undefined;
+                    self.modemPort = undefined;
+                    self.device = "SIM908";
+                }
+                else {
+                    self.smsDevice = devices.sms;
+                    self.modemDevice = devices.modem;
+                    self.device = "HUAWEI";
+                }
 
-                    switch (self.device) {
-                        case "SIM908":
-                            self.transition('initialized')
-                            break;
+                switch (self.device) {
+                    case "SIM908":
+                        self.transition('initialized')
+                        break;
 
-                        case "HUAWEI":
-                            self.PIN = PIN;
+                    case "HUAWEI":
+                        self.PIN = PIN;
 
-                            self.openSmsPort()
-                            .then(function(){
+                        self.openSmsPort()
+                        .then(function(){
 
-                                self.watchATonSms();
-                                self.sendAT(self.smsPort, "ATE1\r"); // echo mode makes easier to parse responses
-                                self.sendAT(self.smsPort, "AT+CMEE=2\r"); // more error
+                            self.watchATonSms();
+                            self.sendAT(self.smsPort, "ATE1\r"); // echo mode makes easier to parse responses
+                            self.sendAT(self.smsPort, "AT+CMEE=2\r"); // more error
 
-                                self.sendAT(self.smsPort, "AT+CPIN=" + self.PIN + "\r");
+                            self.sendAT(self.smsPort, "AT+CPIN=" + self.PIN + "\r");
 
-                                self.sendAT(self.smsPort, "AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
-                                self.sendAT(self.smsPort, "AT+CMGF=1\r"); // text mode for sms
-                                self.sendAT(self.smsPort, "AT+CMGD=0,4\r")
-                                // self.sendAT(self.modemPort, "AT+CMGF=1\r"); // text mode for sms
-                                // self.sendAT(self.modemPort, "AT+CREG=1\r"); //
-                                .then(function () {
+                            self.sendAT(self.smsPort, "AT+CNMI=2,1,0,2,0\r"); // to get notification when messages are received
+                            self.sendAT(self.smsPort, "AT+CMGF=1\r"); // text mode for sms
+                            self.sendAT(self.smsPort, "AT+CMGD=0,4\r")
+                            // self.sendAT(self.modemPort, "AT+CMGF=1\r"); // text mode for sms
+                            // self.sendAT(self.modemPort, "AT+CREG=1\r"); //
+                            .then(function () {
 
-                                    if (self.smsQueue.length > 0){
-                                        var toSend = self.smsQueue.shift();
-                                        self._sendSMS(toSend.message, toSend.phone_no);
-                                    };
+                                if (self.smsQueue.length > 0){
+                                    var toSend = self.smsQueue.shift();
+                                    self._sendSMS(toSend.message, toSend.phone_no);
+                                }
 
-                                    setTimeout(function(){
-                                        self.transition("initialized", PIN);
-                                    }, 2000);
-                                })
+                                setTimeout(function(){
+                                    self.transition("initialized", PIN);
+                                }, 2000);
                             })
-                            .catch(function (err){
-                                console.log("error in initialize", err);
-                                console.log("Could not open sms port");
-                            });
-                            break;
-                    }
-                })
-                .catch(function (err) {
-                    console.log('An error happened in initialization', err.stack);
-                })
-            },
+                        })
+                        .catch(function (err){
+                            console.log("error in initialize", err);
+                            console.log("Could not open sms port");
+                        });
+                        break;
+                }
+            }
         },
 
         "initialized": {
@@ -397,7 +387,7 @@ var dongle = new machina.Fsm({
 
                 switch (self.device) {
                     case "SIM908":
-                        var pppScript = exec('sh ' + SIM908_SCRIPT, function (err, stdout, stderr) {
+                        exec('sh ' + SIM908_SCRIPT, function (err, stdout, stderr) {
                             if (err) {
                                 console.log('error :', err);
                             }
@@ -441,7 +431,7 @@ var dongle = new machina.Fsm({
                         self.sendAT(self.modemPort, "AT+CGATT=0\r");
 
                         self.cleanProcess(self.pppProcess)
-                        .then(function(code){
+                        .then(function(){
                             self.transition("initialized");
                         });
                         break;

@@ -24,11 +24,11 @@ module.exports = {
         var buffer = new Buffer(message, 'base64');
 
         return new Promise(function(resolve, reject){
-                zlib.inflate(buffer, function(err, buffer){
+                zlib.inflate(buffer, function(err, buff){
                     if(err) 
                         reject(err); 
                     else 
-                        resolve(JSON.parse(buffer));
+                        resolve(JSON.parse(buff));
                 });
             });
     }

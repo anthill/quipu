@@ -1,14 +1,14 @@
 {
   "name": "quipu",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "postinstall": "cp ./git-hooks/pre-commit ./.git/hooks/pre-commit; chmod a+x ./.git/hooks/pre-commit",
+    "postinstall": "if [ -d .git ]; then cp ./git-hooks/pre-commit ./.git/hooks/pre-commit; chmod a+x ./.git/hooks/pre-commit; fi",
     "lint": "eslint ./",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "ants",
+  "author": "ants <contact@ants.builders> (http://ants.builders)",
   "license": "MIT",
   "dependencies": {
     "es6-promise": "^2.0.1",
