@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 
 # Config /etc/ppp/peers/fona
 
