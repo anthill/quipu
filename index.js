@@ -5,11 +5,12 @@ var machina = require('machina');
 var spawn = require('child_process').spawn;
 var exec = require('child_process').exec;
 var Promise = require('es6-promise').Promise;
+var path = require('path');
 
 var CONNECTION_TIMEOUT = 20 * 1000;
 var SSH_TIMEOUT = 20 * 1000;
 var DEBUG = process.env.DEBUG ? process.env.DEBUG : false;
-var SIM908_SCRIPT = './sim908.sh';
+var SIM908_SCRIPT = path.resolve(__dirname, './sim908.sh');
 
 var nextCommandTime; // AT command queue (10 cmd/s max)
 
@@ -88,7 +89,7 @@ var dongle = new machina.Fsm({
                 debug("error event on smsPort", data);
                 reject();
             });
-        });    
+        });
     },
 
     openModemPort: function(baudrate){
@@ -336,7 +337,10 @@ var dongle = new machina.Fsm({
 
                 switch (self.device) {
                     case "SIM908":
-                        self.transition('initialized')
+                        self.PIN = PIN;
+                        setTimeout(function() { // Wait for a potential listener to be added
+                            self.transition('initialized', PIN)
+                        }, 1);
                         break;
 
                     case "HUAWEI":
@@ -424,7 +428,9 @@ var dongle = new machina.Fsm({
 
                 switch (self.device) {
                     case "SIM908":
-                        self.transition("initialized");
+                        setTimeout(function () {
+                            self.transition("initialized");
+                        }, 1);
                         break;
                     case "HUAWEI":
                         self.sendAT(self.modemPort, "AT+CGACT=0,1\r");
@@ -495,6 +501,12 @@ var dongle = new machina.Fsm({
                 debug('SSH tunnel closed');
 
                 switch (self.device) {
+
+                    case "SIM908":
+                        setTimeout(function () {
+                            self.transition("initialized");
+                        }, 1);
+                        break;
 
                     case "HUAWEI":
                         self.sendAT(self.modemPort, "AT+CGACT=0,1\r");
