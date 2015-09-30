@@ -258,7 +258,7 @@ var dongle = new machina.Fsm({
             }
 
             // sim unique id
-            if (message.match(/ICCID: ([a-zA-Z0-9]+)/) {
+            if (message.match(/ICCID: ([a-zA-Z0-9]+)/)) {
                 self.emit('simId', message.match(/ICCID: ([a-zA-Z0-9]+)/)[1]);
             }
         });
