@@ -22,6 +22,21 @@ var debug = function() {
     }
 }
 
+// Transform a networkType (as returned by AT^SYSINFO) in a sendable data
+function getReadableSignal(signal) {
+    if (signal === undefined || signal < 2)
+        return 'NODATA';    // No internet
+    if (signal === 2)
+        return 'GPRS';  // GPRS
+    if (signal === 3)
+        return 'EDGE';  // EDGE
+    if (signal === 4)
+        return '3G';    // 3G
+    if (signal > 4)
+        return 'H/H+';  // 3G+ or better
+    return 'unknown';
+}
+
 var dongle = new machina.Fsm({
 
     modem: undefined,
@@ -42,7 +57,7 @@ var dongle = new machina.Fsm({
     initialState: "uninitialized",
 
     getNetworkType: function() {
-        return dongle.networkType;
+        return getReadableSignal(dongle.networkType);
     },
 
     askNetworkType: function() {
@@ -135,8 +150,6 @@ var dongle = new machina.Fsm({
                         nextCommandTime = now;
 
                     var timer = nextCommandTime > now ? nextCommandTime - now : 0;
-
-                    console.log('timer :', timer);
 
                     setTimeout(function () { // basic message queue
                         if (port.isOpen())
@@ -241,6 +254,12 @@ var dongle = new machina.Fsm({
             if (message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)) {
                 dongle.networkType = parseInt(message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)[1]);
                 debug("networkType : " + dongle.networkType);
+                self.emit('networkType', getReadableSignal(dongle.networkType));
+            }
+
+            // sim unique id
+            if (message.match(/ICCID: ([a-zA-Z0-9]+)/)) {
+                self.emit('simId', message.match(/ICCID: ([a-zA-Z0-9]+)/)[1]);
             }
         });
     },
@@ -384,6 +403,7 @@ var dongle = new machina.Fsm({
         "initialized": {
             _onEnter: function(){
                 debug('INITIALIZED');
+                this.sendAT(this.smsPort, 'AT^ICCID?\r');
             },
             "open3G": function(apn) {
 
