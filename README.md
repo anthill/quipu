@@ -48,6 +48,11 @@ setTimeout(function(){
 
 Behind the scene, there is a final state machine (FSM) with the following states:
 
+* **uninitialized**: quipu was just turned on, nothing's happening.
+* **initialized**: quipu has its sms and modem ports open. It is then capable of receiving/sending sms, and opening a 3G connection.
+* **3G_connected**: quipu is now connected to internet via a 3G connection.
+* **tunnelling**: quipu has a ssh connection opened with some remote server. 
+
 ![States of quipu](https://docs.google.com/drawings/d/103BZlfPiCt5CTqBepyA6QTmN5B-ivCOfwhd735zRj5Y/pub?w=960&h=720)
 
 ## Compressing messages
@@ -74,7 +79,14 @@ quipu.on("smsReceived", function(sms){
 });
 ```
 
-### References
+## Compatibility
+
+This project has been developped and tested for the following 3G devices:
+- [HUAWEI E3131](http://consumer.huawei.com/en/mobile-broadband/dongles/tech-specs/e3131-en.htm)
+- [SIM908](http://www.simcom.ee/modules/gsm-gprs-gps/sim908/)
+
+
+## References
 
 AT commands:
 
