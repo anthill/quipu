@@ -57,7 +57,7 @@ Behind the scene, there is a final state machine (FSM) with the following states
 
 ## Compressing messages
 
-160 characters is not a lot and you have useful characters like curly braces that ar not well handeled by sms protocol. So `parser.js` provides and `encode` and `decode` functions that can help you **pass json objects through the air**:
+If you're using the SMS protocol, you may have some troubles sending some messages, because of the size (160 characters) or some characters, such as curly braces. The file `parser.js` provides and `encode` and `decode` functions that can help you, for example, **passing json objects through the air**:
 
 ```
 // to send encoded, as sms don't like curly braces and other stuff

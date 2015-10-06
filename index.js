@@ -62,7 +62,7 @@ var dongle = new machina.Fsm({
 
     askNetworkType: function() {
         // debug("asking for the network type");
-        this.sendAT(this.smsPort, "AT^SYSINFO\r");
+        dongle.sendAT(dongle.smsPort, "AT^SYSINFO\r");
     },
 
     cleanProcess: function(process){
