@@ -20,7 +20,7 @@ var debug = function() {
         [].unshift.call(arguments, "[DEBUG quipu] ");
         console.log.apply(console, arguments);
     }
-}
+};
 
 // Transform a networkType (as returned by AT^SYSINFO) in a sendable data
 function getReadableSignal(signal) {
@@ -96,8 +96,8 @@ var dongle = new machina.Fsm({
             });
 
             self.smsPort.on("open", function() {
-                debug('SMS port opened');                
-                resolve()
+                debug('SMS port opened');
+                resolve();
             });
 
             self.smsPort.on("error", function(data){
@@ -119,7 +119,7 @@ var dongle = new machina.Fsm({
             }
 
             self.modemPort = new SerialPort(self.modemDevice, {
-                baudrate: baudrate ? baudrate : 9600 
+                baudrate: baudrate ? baudrate : 9600
             });
 
             self.modemPort.on("open", function(){
@@ -131,7 +131,7 @@ var dongle = new machina.Fsm({
                 debug("error event on modemPort", data);
                 reject();
             });
-        }); 
+        });
     },
 
     sendAT: function(port, command){
@@ -144,7 +144,7 @@ var dongle = new machina.Fsm({
                     resolve();
                     break;
                 case 'HUAWEI':
-                    var now = new Date().getTime()
+                    var now = new Date().getTime();
 
                     if (nextCommandTime === undefined)
                         nextCommandTime = now;
@@ -212,7 +212,7 @@ var dongle = new machina.Fsm({
                 var body = parts[1];
                 setTimeout(function(){
                     self.sendAT(self.smsPort, "AT+CMGD=0,2\r");
-                }, 5000)
+                }, 5000);
                 
                 self.emit("smsReceived", {body: body, from: from});
             }
@@ -236,7 +236,7 @@ var dongle = new machina.Fsm({
             if(message.slice(0, 5) === "^RSSI"){
                 try {
                     var levelRSSI = message.match(/:\s(\d+)/)[1];
-                    self.signalStrength = parseInt(levelRSSI);
+                    self.signalStrength = parseInt(levelRSSI, 10);
                 } catch(err){
                     console.log("error in watchATmsg for rssi", err);
                 }
@@ -245,14 +245,14 @@ var dongle = new machina.Fsm({
             if(message.slice(0, 5) === "+CREG"){
                 try {
                     var levelCREG = message.match(/:\s(\d+)/)[1];
-                    self.registrationStatus = parseInt(levelCREG);
+                    self.registrationStatus = parseInt(levelCREG, 10);
                 } catch(err){
                     console.log("error in watchATmsg for CREG", err);
                 }
             }
             // network type (EDGE, 3G, 3G+)
             if (message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)) {
-                dongle.networkType = parseInt(message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)[1]);
+                dongle.networkType = parseInt(message.match(/SYSINFO:\d,\d,\d,\d,\d,\d,(\d)/)[1], 10);
                 debug("networkType : " + dongle.networkType);
                 self.emit('networkType', getReadableSignal(dongle.networkType));
             }
@@ -307,7 +307,7 @@ var dongle = new machina.Fsm({
                 // if the connection is not established after CONNECTION_TIMEOUT reject
                 setTimeout(function(){
                     if (!resolved)
-                        self.emit("pppError", {process: myProcess, msg:"Request time out."})
+                        self.emit("pppError", {process: myProcess, msg:"Request time out."});
                 }, CONNECTION_TIMEOUT);
             });
 
@@ -320,7 +320,7 @@ var dongle = new machina.Fsm({
             self.on("pppError", function(msg){
                 debug("received pppError, reason :", msg.msg);
                 self.cleanProcess(msg.process)
-                    .then(function() {self.emit("3G_error")});
+                    .then(function() {self.emit("3G_error");});
             });
 
             setTimeout(function(){
@@ -358,7 +358,7 @@ var dongle = new machina.Fsm({
                     case "SIM908":
                         self.PIN = PIN;
                         setTimeout(function() { // Wait for a potential listener to be added
-                            self.transition('initialized', PIN)
+                            self.transition('initialized', PIN);
                         }, 1);
                         break;
 
@@ -389,7 +389,7 @@ var dongle = new machina.Fsm({
                                 setTimeout(function(){
                                     self.transition("initialized", PIN);
                                 }, 2000);
-                            })
+                            });
                         })
                         .catch(function (err){
                             console.log("error in initialize", err);
@@ -415,8 +415,8 @@ var dongle = new machina.Fsm({
                             if (err) {
                                 console.log('error :', err);
                             }
-                            console.log('stdout : ', stdout)
-                            console.log('stderr : ', stderr)
+                            console.log('stdout : ', stdout);
+                            console.log('stderr : ', stderr);
                             self.transition('3G_connected');
                         });
                         break;
@@ -468,8 +468,6 @@ var dongle = new machina.Fsm({
 
                 var self = this;
 
-                console.log('OPENING THIS F*CKING TUNNEL')
-
                 new Promise(function(resolve, reject){
                     var myProcess = spawn("ssh", ["-v", "-N", "-R", queenPort + ":localhost:" + antPort, target]);
                     debug("nodeprocess :", myProcess.pid, "myProcess: ", process.pid);
@@ -508,7 +506,7 @@ var dongle = new machina.Fsm({
             "closeTunnel": function() {
                 debug('Closing SSH tunnel');
 
-                this.cleanProcess(this.sshProcess)
+                this.cleanProcess(this.sshProcess);
                 debug('SSH tunnel closed');
                 this.transition('3G_connected');
             },
@@ -517,7 +515,7 @@ var dongle = new machina.Fsm({
                 var self = this;
                 debug('Closing SSH tunnel');
 
-                this.cleanProcess(this.sshProcess)
+                this.cleanProcess(this.sshProcess);
                 debug('SSH tunnel closed');
 
                 switch (self.device) {
@@ -533,7 +531,7 @@ var dongle = new machina.Fsm({
                         self.sendAT(self.modemPort, "AT+CGATT=0\r");
 
                         // the killing of ssh doesn't emit exit 
-                        self.cleanProcess(self.pppProcess)
+                        self.cleanProcess(self.pppProcess);
                         self.transition("initialized");
                         break;
                 }
