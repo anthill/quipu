@@ -394,6 +394,7 @@ var dongle = new machina.Fsm({
                         .catch(function (err){
                             console.log("error in initialize", err);
                             console.log("Could not open sms port");
+                            self.emit('hardwareError', "Could not open sms port");
                         });
                         break;
                 }
@@ -434,6 +435,7 @@ var dongle = new machina.Fsm({
                         .catch(function(err){
                             console.log("error in initialize", err.msg);
                             console.log("Could not open modem port");
+                            self.emit('hardwareError', "Could not open modem port");
                         });
                 }
             }
